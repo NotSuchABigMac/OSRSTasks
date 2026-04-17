@@ -41,281 +41,308 @@
 <body class="bg-surface text-gray-200 text-sm select-none">
 <div id="app" class="flex flex-col" style="height:100dvh">
 
-  <!-- ── Top bar ── -->
-  <header class="bg-card border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
-    <span class="text-gold font-bold tracking-wide whitespace-nowrap">Demonic Pacts Tasks</span>
-    <div class="flex-1"></div>
-
-    <!-- WikiSync sync controls -->
-    <div class="flex items-center gap-2">
-      <button @click="openWiki"
-        class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors whitespace-nowrap">
-        Open Wiki
-      </button>
+  <!-- ── Header ── -->
+  <header class="bg-card border-b border-border shrink-0">
+    <div class="px-4 py-3 flex items-center gap-3">
+      <span class="text-gold font-bold tracking-wide">Demonic Pacts Tasks</span>
+      <div class="flex-1"></div>
       <button @click="showSyncHelp = !showSyncHelp"
-        class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors">
-        Sync help
+        class="min-h-[44px] px-4 rounded border border-border text-sm text-gray-400 active:border-gold active:text-gold transition-colors">
+        Sync
       </button>
-      <template v-if="igDoneIds.size">
-        <span class="text-green-400 text-xs">✓ {{ igDoneIds.size }} in-game</span>
-        <button @click="copySyncUrl"
-          class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors whitespace-nowrap">
+      <button v-if="soon.length" @click="showSoonSheet = !showSoonSheet"
+        class="md:hidden min-h-[44px] px-4 rounded border border-border text-sm text-gold transition-colors">
+        Soon ({{ soon.length }})
+      </button>
+    </div>
+
+    <!-- Stats row -->
+    <div class="px-4 pb-2 flex items-center gap-4 text-xs text-gray-500 overflow-x-auto">
+      <span><span class="text-gray-300">{{ appDoneCount }}</span>/{{ tasks.length }} done</span>
+      <span v-if="igDoneIds.size" class="text-green-400">✓ {{ igDoneCount }} in-game</span>
+      <span class="text-gold">{{ donePoints }}/{{ totalPoints }} pts</span>
+      <span v-if="igDoneIds.size">
+        <button @click="copySyncUrl" class="text-gray-500 active:text-gold transition-colors">
           {{ copied ? 'Copied!' : 'Copy sync link' }}
         </button>
-      </template>
+      </span>
+      <div class="flex-1 min-w-0"></div>
+      <button @click="forceRefresh" class="text-gray-600 active:text-gold shrink-0">
+        {{ loading ? 'Loading…' : '↻' }}
+      </button>
     </div>
   </header>
 
   <!-- ── Sync imported banner ── -->
-  <div v-if="syncImported" class="bg-green-950 border-b border-green-800 px-4 py-2 text-xs text-green-400 flex items-center gap-3 shrink-0">
-    <span>✓ Imported {{ syncImported }} in-game completions.</span>
-    <button @click="copySyncUrl"
-      class="px-2 py-0.5 rounded border border-green-700 hover:border-green-400 transition-colors whitespace-nowrap">
+  <div v-if="syncImported" class="bg-green-950 border-b border-green-800 px-4 py-3 text-sm text-green-400 flex items-center gap-3 shrink-0">
+    <span>✓ {{ syncImported }} completions imported.</span>
+    <button @click="copySyncUrl" class="px-3 py-1.5 rounded border border-green-700 active:border-green-400 transition-colors text-sm whitespace-nowrap">
       {{ copied ? 'Copied!' : 'Copy sync link' }}
     </button>
-    <button @click="dismissSync" class="ml-auto text-green-700 hover:text-green-400">✕</button>
+    <button @click="dismissSync" class="ml-auto text-green-700 text-lg leading-none">✕</button>
   </div>
 
   <!-- ── Sync help panel ── -->
-  <div v-if="showSyncHelp" class="bg-panel border-b border-border px-4 py-3 text-xs text-gray-400 space-y-2 shrink-0">
-    <p class="text-gray-300 font-medium">How to sync in-game completions:</p>
-    <ol class="list-decimal list-inside space-y-1">
-      <li>Click <span class="text-gold">Open Wiki</span> to open the DPL Tasks page in a new tab.</li>
+  <div v-if="showSyncHelp" class="bg-panel border-b border-border px-4 py-4 text-sm text-gray-400 space-y-3 shrink-0">
+    <p class="text-gray-300 font-medium">How to sync in-game completions</p>
+    <ol class="list-decimal list-inside space-y-1.5 text-xs">
+      <li>Tap <span class="text-gold">Open Wiki</span> to open the DPL Tasks page.</li>
       <li>Enter your username in the lookup box and wait for WikiSync to load.</li>
-      <li>Run the bookmarklet below in that tab (bookmark it or paste in the console).</li>
-      <li>Your completed tasks will appear here automatically.</li>
+      <li>Run the bookmarklet — your completed tasks sync back here automatically.</li>
     </ol>
-    <div class="mt-2">
-      <div class="flex items-center justify-between mb-1">
-        <p class="text-gray-500">Bookmarklet — paste into the wiki page console, or drag the button to your bookmarks bar:</p>
-        <button @click="copyBookmarklet"
-          class="text-xs px-2 py-1 rounded bg-card border border-border hover:border-gold hover:text-gold transition-colors whitespace-nowrap ml-3">
-          {{ copied ? 'Copied!' : 'Copy code' }}
+    <button @click="openWiki"
+      class="w-full min-h-[44px] rounded border border-border text-sm text-gray-300 active:border-gold active:text-gold transition-colors">
+      Open Wiki
+    </button>
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-500">Bookmarklet code</span>
+        <button @click="copyBookmarklet" class="text-xs px-3 py-1.5 rounded border border-border active:border-gold active:text-gold transition-colors">
+          {{ copied ? 'Copied!' : 'Copy' }}
         </button>
       </div>
       <textarea readonly @click="$event.target.select()" :value="bookmarklet"
-        class="w-full bg-surface rounded px-2 py-1.5 text-green-400 text-xs font-mono resize-none focus:outline-none focus:border-gold border border-border"
+        class="w-full bg-surface rounded px-3 py-2 text-green-400 text-xs font-mono resize-none focus:outline-none border border-border"
         rows="3"></textarea>
-      <p class="text-gray-600 mt-1">Or drag this to your bookmarks bar:
-        <a :href="bookmarklet" class="text-gold underline ml-1" @click.prevent>WikiSync Grab</a>
+      <p class="text-xs text-gray-600 mt-1">
+        Or drag to bookmarks bar: <a :href="bookmarklet" class="text-gold underline" @click.prevent>WikiSync Grab</a>
       </p>
     </div>
   </div>
 
-  <!-- ── Stats bar ── -->
-  <div class="bg-panel border-b border-border px-4 py-1.5 flex items-center gap-5 text-xs text-gray-500 shrink-0">
-    <span>
-      <span class="text-gray-300">{{ appDoneCount }}</span>/{{ tasks.length }} ticked
-    </span>
-    <span v-if="igDoneIds.size">
-      <span class="text-green-400">{{ igDoneCount }}</span> in-game
-    </span>
-    <span class="text-gold">{{ donePoints }}/{{ totalPoints }} pts</span>
-    <div class="flex-1"></div>
-    <span>{{ loading ? 'Fetching wiki…' : lastFetch ? `Cached ${lastFetch}` : '' }}</span>
-    <button @click="forceRefresh" class="hover:text-gold transition-colors">↻ Refresh</button>
+  <!-- ── Search + filter toggle ── -->
+  <div class="bg-panel border-b border-border px-3 py-2 flex gap-2 shrink-0">
+    <input v-model="q" placeholder="Search tasks…"
+      class="flex-1 bg-surface border border-border rounded px-3 min-h-[44px] text-sm focus:outline-none focus:border-gold placeholder-gray-600" />
+    <button @click="showFilters = !showFilters"
+      :class="['min-h-[44px] px-4 rounded border text-sm transition-colors whitespace-nowrap',
+        showFilters ? 'border-gold text-gold' : 'border-border text-gray-400 active:border-gold active:text-gold']">
+      Filters{{ activeFilterCount ? ` (${activeFilterCount})` : '' }}
+    </button>
+    <span class="flex items-center text-xs text-gray-600 whitespace-nowrap">{{ filtered.length }}</span>
   </div>
 
-  <!-- ── Filters row 1 ── -->
-  <div class="bg-panel border-b border-border px-4 py-2 flex flex-wrap gap-2 items-center shrink-0">
-    <input v-model="q" placeholder="Search…"
-      class="bg-surface border border-border rounded px-2.5 py-1 text-xs w-40 focus:outline-none focus:border-gold placeholder-gray-600" />
+  <!-- ── Collapsible filter panel ── -->
+  <div v-if="showFilters" class="bg-panel border-b border-border px-3 py-3 space-y-3 shrink-0">
 
-    <div class="flex gap-1">
+    <!-- Tiers -->
+    <div class="flex flex-wrap gap-2">
       <button v-for="t in TIERS" :key="t" @click="toggleTier(t)"
-        :class="['px-2 py-0.5 rounded text-xs border capitalize transition-colors',
-          activeTiers.has(t)
-            ? tierActiveClass(t)
-            : 'border-border text-gray-600 hover:border-gray-500 hover:text-gray-400']">
+        :class="['min-h-[44px] px-4 rounded border text-sm capitalize transition-colors',
+          activeTiers.has(t) ? tierActiveClass(t) : 'border-border text-gray-500 active:border-gray-400']">
         {{ t }}
       </button>
     </div>
 
-    <label class="flex items-center gap-1 cursor-pointer text-xs text-gray-400">
-      <input type="checkbox" v-model="onlySoonFilter" class="accent-yellow-400" /> Soon only
-    </label>
-
-    <div class="flex items-center gap-1 text-xs text-gray-500">
-      Pts
-      <input type="number" v-model.number="minPts" placeholder="0"
-        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold ml-1" />
-      <span class="text-gray-700">–</span>
-      <input type="number" v-model.number="maxPts" placeholder="∞"
-        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold" />
+    <!-- Regions -->
+    <div>
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-xs text-gray-600">Regions</span>
+        <button @click="toggleAllAreas(true)"  class="text-xs text-gray-500 active:text-gold min-h-[44px] px-2">All</button>
+        <button @click="toggleAllAreas(false)" class="text-xs text-gray-500 active:text-gold min-h-[44px] px-2">None</button>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button v-for="a in areaList" :key="a" @click="toggleArea(a)"
+          :class="['min-h-[44px] px-3 rounded border text-sm transition-colors',
+            activeAreas.has(a) ? 'border-gold text-gold' : 'border-border text-gray-500 active:border-gray-400']">
+          {{ fmtArea(a) }}
+        </button>
+      </div>
     </div>
 
-    <div class="flex items-center gap-1 text-xs text-gray-500">
-      Done%
-      <input type="number" v-model.number="minPct" placeholder="0" min="0" max="100"
-        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold ml-1" />
-      <span class="text-gray-700">–</span>
-      <input type="number" v-model.number="maxPct" placeholder="100" min="0" max="100"
-        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold" />
+    <!-- Numeric filters + soon -->
+    <div class="flex flex-wrap gap-3 items-center">
+      <label class="flex items-center gap-2 cursor-pointer min-h-[44px]">
+        <input type="checkbox" v-model="onlySoonFilter" class="accent-yellow-400 w-4 h-4" />
+        <span class="text-sm text-gray-400">Soon only</span>
+      </label>
+      <div class="flex items-center gap-1 text-sm text-gray-500">
+        Pts
+        <input type="number" v-model.number="minPts" placeholder="0"
+          class="bg-surface border border-border rounded px-2 min-h-[44px] w-16 text-sm focus:outline-none focus:border-gold ml-1" />
+        <span class="text-gray-700">–</span>
+        <input type="number" v-model.number="maxPts" placeholder="∞"
+          class="bg-surface border border-border rounded px-2 min-h-[44px] w-16 text-sm focus:outline-none focus:border-gold" />
+      </div>
+      <div class="flex items-center gap-1 text-sm text-gray-500">
+        Done%
+        <input type="number" v-model.number="minPct" placeholder="0"
+          class="bg-surface border border-border rounded px-2 min-h-[44px] w-16 text-sm focus:outline-none focus:border-gold ml-1" />
+        <span class="text-gray-700">–</span>
+        <input type="number" v-model.number="maxPct" placeholder="100"
+          class="bg-surface border border-border rounded px-2 min-h-[44px] w-16 text-sm focus:outline-none focus:border-gold" />
+      </div>
+      <button @click="clearFilters" class="text-sm text-gray-600 active:text-gray-300 min-h-[44px] px-2 ml-auto">Clear</button>
     </div>
-
-    <button @click="clearFilters" class="ml-auto text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
-    <span class="text-gray-600 text-xs">{{ filtered.length }} shown</span>
-  </div>
-
-  <!-- ── Filters row 2: regions ── -->
-  <div class="bg-panel border-b border-border px-4 py-1.5 flex flex-wrap gap-1.5 items-center shrink-0">
-    <span class="text-xs text-gray-600 mr-1">Regions</span>
-    <button @click="toggleAllAreas(true)"  class="text-xs text-gray-600 hover:text-gold px-1 transition-colors">All</button>
-    <button @click="toggleAllAreas(false)" class="text-xs text-gray-600 hover:text-gold px-1 transition-colors">None</button>
-    <span class="text-gray-700 mx-1">|</span>
-    <button v-for="a in areaList" :key="a" @click="toggleArea(a)"
-      :class="['px-2 py-0.5 rounded text-xs border transition-colors',
-        activeAreas.has(a)
-          ? 'border-gold text-gold'
-          : 'border-border text-gray-600 hover:border-gray-500 hover:text-gray-400']">
-      {{ fmtArea(a) }}
-    </button>
   </div>
 
   <!-- ── Body ── -->
-  <div class="flex flex-1 overflow-hidden">
+  <div class="flex flex-1 overflow-hidden relative">
 
-    <!-- Table -->
-    <div class="flex-1 overflow-auto">
-      <div v-if="loading && !tasks.length"
-        class="flex items-center justify-center h-40 text-gray-500">
+    <!-- ── Mobile: card list ── -->
+    <div class="flex-1 overflow-auto md:hidden">
+      <div v-if="loading && !tasks.length" class="flex items-center justify-center h-40 text-gray-500 text-sm">
         Loading tasks from wiki…
       </div>
-      <div v-else-if="fetchError"
-        class="flex items-center justify-center h-40 text-gray-500 gap-2">
+      <div v-else-if="fetchError" class="flex items-center justify-center h-40 text-gray-500 text-sm gap-2">
         {{ fetchError }}
-        <button @click="forceRefresh" class="text-gold hover:underline">Retry</button>
+        <button @click="forceRefresh" class="text-gold">Retry</button>
       </div>
+      <div v-else>
+        <div v-for="t in filtered" :key="t.taskId"
+          class="border-b border-[#2a2826] px-4 py-3 flex gap-3 items-start">
 
+          <!-- Checkbox -->
+          <button @click="toggleDone(t.taskId)"
+            :class="['mt-1 w-6 h-6 rounded border shrink-0 flex items-center justify-center text-sm transition-colors',
+              appDone.has(t.taskId) ? 'bg-yellow-400 border-yellow-400 text-black' : 'border-border text-transparent']">
+            ✓
+          </button>
+
+          <!-- Content -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start gap-2">
+              <span class="font-medium text-gray-200 leading-snug">{{ t.name }}</span>
+              <span v-if="igDoneIds.has(t.taskId)" class="shrink-0 text-green-400 text-xs mt-0.5">✓</span>
+            </div>
+            <div v-if="t.description && t.description !== t.name"
+              class="text-xs text-gray-500 mt-0.5">{{ t.description }}</div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-500">
+              <span :class="['capitalize', `tier-${t.tier}`]">{{ t.tier }}</span>
+              <span class="text-gray-400">{{ fmtArea(t.area) }}</span>
+              <span :class="`tier-${t.tier}`">{{ t.points }} pts</span>
+              <span :class="scoreColor(t.score)">Score {{ t.score }}</span>
+              <span :class="pctColor(t.completionPct)">{{ t.completionPct > 0 ? t.completionPct.toFixed(1) + '%' : '' }}</span>
+            </div>
+            <div v-if="t.requirements.length" class="flex flex-wrap gap-1 mt-1.5">
+              <span v-for="r in t.requirements" :key="r.key"
+                :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]">
+                {{ reqLabel(r) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Soon + Snooze -->
+          <div class="flex flex-col gap-1 shrink-0">
+            <button @click="toggleSoon(t.taskId)"
+              :class="['min-w-[44px] min-h-[44px] flex items-center justify-center text-xl transition-colors',
+                inSoon(t.taskId) ? 'text-gold' : 'text-gray-700']">★</button>
+            <button @click="snooze(t.taskId)"
+              class="min-w-[44px] min-h-[44px] flex items-center justify-center text-base text-gray-700 active:text-blue-400 transition-colors"
+              title="Snooze 24h">💤</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Desktop: table ── -->
+    <div class="flex-1 overflow-auto hidden md:block">
+      <div v-if="loading && !tasks.length" class="flex items-center justify-center h-40 text-gray-500">Loading tasks from wiki…</div>
+      <div v-else-if="fetchError" class="flex items-center justify-center h-40 text-gray-500 gap-2">
+        {{ fetchError }} <button @click="forceRefresh" class="text-gold hover:underline">Retry</button>
+      </div>
       <table v-else class="w-full border-collapse">
         <thead class="sticky top-0 z-10 bg-card shadow-sm">
           <tr class="border-b border-border">
             <th class="w-8 px-2 py-2"></th>
-            <th @click="setSort('area')"
-              class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
-              Area <span class="opacity-50">{{ sortInd('area') }}</span>
-            </th>
-            <th @click="setSort('name')"
-              class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 text-xs">
-              Task <span class="opacity-50">{{ sortInd('name') }}</span>
-            </th>
+            <th @click="setSort('area')" class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">Area <span class="opacity-50">{{ sortInd('area') }}</span></th>
+            <th @click="setSort('name')" class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 text-xs">Task <span class="opacity-50">{{ sortInd('name') }}</span></th>
             <th class="px-3 py-2 text-left text-gold font-medium text-xs">Requirements</th>
-            <th @click="setSort('points')"
-              class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
-              Pts <span class="opacity-50">{{ sortInd('points') }}</span>
-            </th>
-            <th @click="setSort('completionPct')"
-              class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
-              Done% <span class="opacity-50">{{ sortInd('completionPct') }}</span>
-            </th>
-            <th @click="setSort('score')"
-              class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs"
-              title="Points × completion rate — higher means good value and accessible">
-              Score <span class="opacity-50">{{ sortInd('score') }}</span>
-            </th>
+            <th @click="setSort('points')" class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">Pts <span class="opacity-50">{{ sortInd('points') }}</span></th>
+            <th @click="setSort('completionPct')" class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">Done% <span class="opacity-50">{{ sortInd('completionPct') }}</span></th>
+            <th @click="setSort('score')" class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs" title="Points × completion rate">Score <span class="opacity-50">{{ sortInd('score') }}</span></th>
+            <th class="w-8 px-2 py-2"></th>
             <th class="w-8 px-2 py-2"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="t in filtered" :key="t.taskId" class="border-b border-[#222120]">
-
-            <!-- Tick -->
             <td class="px-2 py-1.5 text-center">
-              <input type="checkbox" :checked="appDone.has(t.taskId)" @change="toggleDone(t.taskId)"
-                class="accent-yellow-400 cursor-pointer w-3.5 h-3.5" />
+              <input type="checkbox" :checked="appDone.has(t.taskId)" @change="toggleDone(t.taskId)" class="accent-yellow-400 cursor-pointer w-3.5 h-3.5" />
             </td>
-
-            <!-- Area -->
-            <td class="px-3 py-1.5 text-gray-400 whitespace-nowrap text-xs">
-              {{ fmtArea(t.area) }}
-            </td>
-
-            <!-- Task name + description -->
+            <td class="px-3 py-1.5 text-gray-400 whitespace-nowrap text-xs">{{ fmtArea(t.area) }}</td>
             <td class="px-3 py-1.5 max-w-xs">
               <div class="flex items-start gap-2">
-                <span :class="['text-xs font-bold mt-0.5 shrink-0 uppercase', `tier-${t.tier}`]"
-                  :title="t.tier">{{ t.tier.charAt(0) }}</span>
                 <div class="min-w-0">
-                  <div class="task-name font-medium text-gray-200 leading-tight">{{ t.name }}</div>
-                  <div v-if="t.description && t.description !== t.name"
-                    class="text-xs text-gray-500 mt-0.5 leading-tight">{{ t.description }}</div>
+                  <div class="font-medium text-gray-200 leading-tight">{{ t.name }}</div>
+                  <div v-if="t.description && t.description !== t.name" class="text-xs text-gray-500 mt-0.5 leading-tight">{{ t.description }}</div>
                 </div>
-                <span v-if="igDoneIds.has(t.taskId)"
-                  class="shrink-0 text-green-400 text-xs ml-1 mt-0.5" title="Completed in-game (WikiSync)">✓</span>
+                <span v-if="igDoneIds.has(t.taskId)" class="shrink-0 text-green-400 text-xs ml-1 mt-0.5">✓</span>
               </div>
             </td>
-
-            <!-- Requirements -->
             <td class="px-3 py-1.5">
               <span v-if="!t.requirements.length" class="text-gray-700 text-xs">—</span>
               <div v-else class="flex flex-wrap gap-1">
-                <span v-for="r in t.requirements" :key="r.key"
-                  :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]"
-                  :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">
-                  {{ reqLabel(r) }}
-                </span>
+                <span v-for="r in t.requirements" :key="r.key" :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]" :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">{{ reqLabel(r) }}</span>
               </div>
             </td>
-
-            <!-- Points -->
-            <td class="px-3 py-1.5 text-right">
-              <span :class="['font-semibold text-xs', `tier-${t.tier}`]">{{ t.points }}</span>
-            </td>
-
-            <!-- Completion % -->
-            <td class="px-3 py-1.5 text-right">
-              <span :class="['text-xs', pctColor(t.completionPct)]">
-                {{ t.completionPct > 0 ? t.completionPct.toFixed(1) + '%' : '—' }}
-              </span>
-            </td>
-
-            <!-- Score -->
-            <td class="px-3 py-1.5 text-right">
-              <span :class="['text-xs font-medium', scoreColor(t.score)]">{{ t.score }}</span>
-            </td>
-
-            <!-- Soon star -->
+            <td class="px-3 py-1.5 text-right"><span :class="['font-semibold text-xs', `tier-${t.tier}`]">{{ t.points }}</span></td>
+            <td class="px-3 py-1.5 text-right"><span :class="['text-xs', pctColor(t.completionPct)]">{{ t.completionPct > 0 ? t.completionPct.toFixed(1) + '%' : '—' }}</span></td>
+            <td class="px-3 py-1.5 text-right"><span :class="['text-xs font-medium', scoreColor(t.score)]">{{ t.score }}</span></td>
             <td class="px-2 py-1.5 text-center">
-              <button @click="toggleSoon(t.taskId)"
-                :class="['text-base leading-none transition-colors',
-                  inSoon(t.taskId) ? 'text-gold' : 'text-gray-700 hover:text-gold']"
-                title="Add to Soon">★</button>
+              <button @click="toggleSoon(t.taskId)" :class="['text-base leading-none transition-colors', inSoon(t.taskId) ? 'text-gold' : 'text-gray-700 hover:text-gold']" title="Add to Soon">★</button>
+            </td>
+            <td class="px-2 py-1.5 text-center">
+              <button @click="snooze(t.taskId)" class="text-sm text-gray-600 hover:text-blue-400 transition-colors" title="Snooze 24h">💤</button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- ── Soon panel ── -->
+    <!-- ── Desktop: Soon sidebar ── -->
     <transition name="soon-slide">
-      <div v-if="soon.length" class="w-60 border-l border-border bg-panel flex flex-col shrink-0 overflow-hidden">
+      <div v-if="soon.length" class="hidden md:flex w-60 border-l border-border bg-panel flex-col shrink-0 overflow-hidden">
         <div class="px-4 py-2.5 border-b border-border flex items-center justify-between shrink-0">
           <span class="text-gold font-semibold text-xs tracking-wide">SOON ({{ soon.length }})</span>
-          <button @click="soon = []" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+          <button @click="soon = []" class="text-xs text-gray-600 hover:text-gray-400">Clear</button>
         </div>
         <div class="flex-1 overflow-auto divide-y divide-[#2c2a26]">
           <div v-for="id in soon" :key="id" class="px-3 py-2.5 flex items-start gap-2">
-            <input type="checkbox" :checked="appDone.has(id)" @change="toggleDone(id)"
-              class="accent-yellow-400 cursor-pointer mt-0.5 w-3.5 h-3.5 shrink-0" />
+            <input type="checkbox" :checked="appDone.has(id)" @change="toggleDone(id)" class="accent-yellow-400 cursor-pointer mt-0.5 w-3.5 h-3.5 shrink-0" />
             <div class="flex-1 min-w-0">
-              <div :class="['text-xs leading-tight truncate',
-                isEffectiveDone(id) ? 'line-through text-gray-500' : 'text-gray-200']">
-                {{ taskMap[id]?.name }}
-              </div>
+              <div class="text-xs leading-tight truncate text-gray-200">{{ taskMap[id]?.name }}</div>
               <div class="flex gap-2 mt-1">
                 <span :class="['text-xs capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
                 <span class="text-xs text-gray-500">{{ taskMap[id]?.points }} pts</span>
               </div>
             </div>
-            <button @click="toggleSoon(id)"
-              class="text-gray-600 hover:text-red-400 text-xs leading-none mt-0.5 transition-colors shrink-0">✕</button>
+            <button @click="toggleSoon(id)" class="text-gray-600 hover:text-red-400 text-xs leading-none mt-0.5 shrink-0">✕</button>
           </div>
         </div>
-        <div class="px-4 py-2 border-t border-border text-xs text-gray-500 shrink-0">
-          {{ soonPoints }} pts · {{ soonDone }} done
-        </div>
+        <div class="px-4 py-2 border-t border-border text-xs text-gray-500 shrink-0">{{ soonPoints }} pts · {{ soonDone }} done</div>
       </div>
     </transition>
+
+    <!-- ── Mobile: Soon bottom sheet ── -->
+    <div v-if="showSoonSheet && soon.length"
+      class="md:hidden fixed inset-0 z-30 flex flex-col justify-end"
+      @click.self="showSoonSheet = false">
+      <div class="bg-panel border-t border-border rounded-t-xl max-h-[70vh] flex flex-col">
+        <div class="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
+          <span class="text-gold font-semibold">Soon ({{ soon.length }}) · {{ soonPoints }} pts</span>
+          <div class="flex gap-3">
+            <button @click="soon = []" class="text-sm text-gray-500 active:text-red-400">Clear</button>
+            <button @click="showSoonSheet = false" class="text-xl leading-none text-gray-500 active:text-gray-300">✕</button>
+          </div>
+        </div>
+        <div class="overflow-auto divide-y divide-[#2c2a26]">
+          <div v-for="id in soon" :key="id" class="px-4 py-3 flex items-center gap-3">
+            <button @click="toggleDone(id)"
+              :class="['w-6 h-6 rounded border shrink-0 flex items-center justify-center text-sm transition-colors',
+                appDone.has(id) ? 'bg-yellow-400 border-yellow-400 text-black' : 'border-border text-transparent']">✓</button>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-gray-200 truncate">{{ taskMap[id]?.name }}</div>
+              <div class="flex gap-2 mt-0.5">
+                <span :class="['text-xs capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
+                <span class="text-xs text-gray-500">{{ taskMap[id]?.points }} pts</span>
+              </div>
+            </div>
+            <button @click="toggleSoon(id)" class="text-gray-600 active:text-red-400 text-lg leading-none shrink-0 min-w-[44px] flex items-center justify-center">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -334,12 +361,14 @@ const LS = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
-const CACHE_KEY  = 'dpl_tasks_v2';
-const DONE_KEY   = 'dpl_done_v1';
-const SOON_KEY   = 'dpl_soon_v1';
-const IG_KEY     = 'dpl_ig_v1';
-const AREAS_KEY  = 'dpl_areas_v1';
-const CACHE_TTL  = 60 * 60 * 1000;
+const CACHE_KEY   = 'dpl_tasks_v2';
+const DONE_KEY    = 'dpl_done_v1';
+const SOON_KEY    = 'dpl_soon_v1';
+const IG_KEY      = 'dpl_ig_v1';
+const AREAS_KEY   = 'dpl_areas_v1';
+const SNOOZE_KEY  = 'dpl_snooze_v1';
+const CACHE_TTL   = 60 * 60 * 1000;
+const SNOOZE_MS   = 24 * 60 * 60 * 1000;
 
 // Bookmarklet that runs on the wiki page after WikiSync loads
 const APP_URL = 'https://notsuchabigmac.github.io/OSRSTasks/';
@@ -365,11 +394,14 @@ createApp({
     const fetchError = ref('');
     const lastFetch  = ref('');
 
-    const appDone  = ref(new Set(LS.get(DONE_KEY, [])));
+    const appDone   = ref(new Set(LS.get(DONE_KEY, [])));
     const igDoneIds = ref(new Set(LS.get(IG_KEY, [])));
-    const soon     = ref(LS.get(SOON_KEY, []));
+    const soon      = ref(LS.get(SOON_KEY, []));
+    const snoozed   = ref(LS.get(SNOOZE_KEY, {})); // { taskId: expiryTimestamp }
 
     const showSyncHelp  = ref(false);
+    const showFilters   = ref(false);
+    const showSoonSheet = ref(false);
     const copied        = ref(false);
     const syncImported  = ref(0);
     const syncUrl       = ref('');
@@ -389,10 +421,11 @@ createApp({
     const sortDir = ref(-1);
 
     // Persist state
-    watch(appDone,    v => LS.set(DONE_KEY,  [...v]), { deep: true });
-    watch(igDoneIds,  v => LS.set(IG_KEY,    [...v]), { deep: true });
-    watch(soon,       v => LS.set(SOON_KEY,  v));
-    watch(activeAreas,v => LS.set(AREAS_KEY, [...v]), { deep: true });
+    watch(appDone,    v => LS.set(DONE_KEY,   [...v]), { deep: true });
+    watch(igDoneIds,  v => LS.set(IG_KEY,     [...v]), { deep: true });
+    watch(soon,       v => LS.set(SOON_KEY,   v));
+    watch(activeAreas,v => LS.set(AREAS_KEY,  [...v]), { deep: true });
+    watch(snoozed,    v => LS.set(SNOOZE_KEY, v),      { deep: true });
 
     // ── Bookmarklet ──────────────────────────────────────────────────────────
 
@@ -576,6 +609,31 @@ createApp({
       i >= 0 ? soon.value.splice(i, 1) : soon.value.push(id);
     }
 
+    function isSnoozed(id) {
+      const exp = snoozed.value[id];
+      if (!exp) return false;
+      if (Date.now() > exp) { const s = { ...snoozed.value }; delete s[id]; snoozed.value = s; return false; }
+      return true;
+    }
+
+    function snooze(id) {
+      snoozed.value = { ...snoozed.value, [id]: Date.now() + SNOOZE_MS };
+    }
+
+    function unsnooze(id) {
+      const s = { ...snoozed.value }; delete s[id]; snoozed.value = s;
+    }
+
+    const activeFilterCount = computed(() => {
+      let n = 0;
+      if (activeTiers.value.size) n++;
+      if (activeAreas.value.size < areaList.value.length) n++;
+      if (onlySoonFilter.value) n++;
+      if (minPts.value !== '' || maxPts.value !== '') n++;
+      if (minPct.value !== '' || maxPct.value !== '') n++;
+      return n;
+    });
+
     function reqLabel(r) {
       if (r.type === 'skill') {
         return `${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} ${r.level}`;
@@ -660,8 +718,8 @@ createApp({
       let list = tasks.value;
       const qs = q.value.trim().toLowerCase();
 
-      // Always hide done tasks
-      list = list.filter(t => !isEffectiveDone(t.taskId));
+      // Always hide done and snoozed tasks
+      list = list.filter(t => !isEffectiveDone(t.taskId) && !isSnoozed(t.taskId));
 
       if (qs)                     list = list.filter(t => t.name.toLowerCase().includes(qs) || t.description.toLowerCase().includes(qs));
       if (activeAreas.value.size) list = list.filter(t => activeAreas.value.has(t.area));
@@ -704,8 +762,9 @@ createApp({
       filtered, areaList,
       appDoneCount, igDoneCount, donePoints, totalPoints, soonPoints, soonDone,
       syncImported, syncUrl,
+      showFilters, showSoonSheet, activeFilterCount,
       openWiki, copyBookmarklet, copySyncUrl, dismissSync,
-      isEffectiveDone, inSoon, toggleDone, toggleSoon,
+      isEffectiveDone, inSoon, isSnoozed, snooze, unsnooze, toggleDone, toggleSoon,
       reqLabel, reqStyle, fmtArea, pctColor, scoreColor,
       toggleTier, tierActiveClass, toggleArea, toggleAllAreas, activeAreas,
       clearFilters, setSort, sortInd,
