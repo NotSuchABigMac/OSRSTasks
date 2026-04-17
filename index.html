@@ -35,14 +35,21 @@
 
     .soon-slide-enter-active, .soon-slide-leave-active { transition: width .2s ease; overflow: hidden; }
     .soon-slide-enter-from, .soon-slide-leave-to       { width: 0 !important; }
+
+    .page-enter-active, .page-leave-active { transition: transform .25s ease; }
+    .page-enter-from, .page-leave-to       { transform: translateX(100%); }
+
+    .header-wrap { transition: max-height .2s ease, opacity .2s ease; overflow: hidden; }
+    .header-wrap.scrolled-away { max-height: 0 !important; opacity: 0; }
   </style>
 </head>
 
 <body class="bg-surface text-gray-200 text-sm select-none">
 <div id="app" class="flex flex-col" style="height:100dvh">
 
-  <!-- ── Header ── -->
-  <header class="bg-card border-b border-border shrink-0">
+  <!-- ── Header (hides on mobile scroll down) ── -->
+  <div :class="['header-wrap shrink-0', headerHidden ? 'scrolled-away' : '']" style="max-height:200px">
+  <header class="bg-card border-b border-border">
     <div class="px-4 py-3 flex items-center gap-3">
       <span class="text-gold font-bold tracking-wide">Demonic Pacts Tasks</span>
       <div class="flex-1"></div>
@@ -109,6 +116,7 @@
       </p>
     </div>
   </div>
+  </div><!-- end header-wrap -->
 
   <!-- ── Search + filter toggle ── -->
   <div class="bg-panel border-b border-border px-3 py-2 flex gap-2 shrink-0">
@@ -180,7 +188,7 @@
   <div class="flex flex-1 overflow-hidden relative">
 
     <!-- ── Mobile: card list ── -->
-    <div class="flex-1 overflow-auto md:hidden">
+    <div class="flex-1 overflow-auto md:hidden" @scroll="handleScroll">
       <div v-if="loading && !tasks.length" class="flex items-center justify-center h-40 text-gray-500 text-sm">
         Loading tasks from wiki…
       </div>
@@ -314,35 +322,53 @@
       </div>
     </transition>
 
-    <!-- ── Mobile: Soon bottom sheet ── -->
-    <div v-if="showSoonSheet && soon.length"
-      class="md:hidden fixed inset-0 z-30 flex flex-col justify-end"
-      @click.self="showSoonSheet = false">
-      <div class="bg-panel border-t border-border rounded-t-xl max-h-[70vh] flex flex-col">
-        <div class="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-          <span class="text-gold font-semibold">Soon ({{ soon.length }}) · {{ soonPoints }} pts</span>
-          <div class="flex gap-3">
-            <button @click="soon = []" class="text-sm text-gray-500 active:text-red-400">Clear</button>
-            <button @click="showSoonSheet = false" class="text-xl leading-none text-gray-500 active:text-gray-300">✕</button>
-          </div>
+    <!-- ── Mobile: Soon full-page ── -->
+    <transition name="page">
+      <div v-if="showSoonSheet" class="md:hidden fixed inset-0 z-40 bg-surface flex flex-col">
+        <!-- Soon page header -->
+        <div class="bg-card border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
+          <button @click="showSoonSheet = false"
+            class="min-w-[44px] min-h-[44px] flex items-center justify-center text-gold text-2xl leading-none">‹</button>
+          <span class="text-gold font-bold text-lg">Soon</span>
+          <span class="text-gray-500 text-sm">({{ soon.length }})</span>
+          <div class="flex-1"></div>
+          <span :class="['text-sm font-medium', soonDone === soon.length && soon.length ? 'text-green-400' : 'text-gold']">
+            {{ soonPoints }} pts
+          </span>
+          <button @click="soon = []" class="min-h-[44px] px-3 text-sm text-gray-500 active:text-red-400">Clear</button>
         </div>
-        <div class="overflow-auto divide-y divide-[#2c2a26]">
-          <div v-for="id in soon" :key="id" class="px-4 py-3 flex items-center gap-3">
+
+        <!-- Soon items -->
+        <div class="flex-1 overflow-auto divide-y divide-[#2a2826]">
+          <div v-if="!soon.length" class="flex items-center justify-center h-40 text-gray-600 text-sm">
+            No tasks in Soon list.
+          </div>
+          <div v-for="id in soon" :key="id" class="px-4 py-4 flex items-center gap-3">
             <button @click="toggleDone(id)"
-              :class="['w-6 h-6 rounded border shrink-0 flex items-center justify-center text-sm transition-colors',
+              :class="['w-7 h-7 rounded border shrink-0 flex items-center justify-center text-base transition-colors',
                 appDone.has(id) ? 'bg-yellow-400 border-yellow-400 text-black' : 'border-border text-transparent']">✓</button>
             <div class="flex-1 min-w-0">
-              <div class="text-sm text-gray-200 truncate">{{ taskMap[id]?.name }}</div>
-              <div class="flex gap-2 mt-0.5">
-                <span :class="['text-xs capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
-                <span class="text-xs text-gray-500">{{ taskMap[id]?.points }} pts</span>
+              <div class="text-base text-gray-200 leading-snug">{{ taskMap[id]?.name }}</div>
+              <div class="flex gap-3 mt-1 text-xs">
+                <span :class="['capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
+                <span class="text-gray-500">{{ fmtArea(taskMap[id]?.area) }}</span>
+                <span :class="`tier-${taskMap[id]?.tier}`">{{ taskMap[id]?.points }} pts</span>
+                <span :class="scoreColor(taskMap[id]?.score)">Score {{ taskMap[id]?.score }}</span>
               </div>
             </div>
-            <button @click="toggleSoon(id)" class="text-gray-600 active:text-red-400 text-lg leading-none shrink-0 min-w-[44px] flex items-center justify-center">✕</button>
+            <button @click="toggleSoon(id)"
+              class="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 active:text-red-400 text-xl shrink-0">✕</button>
           </div>
         </div>
+
+        <!-- Soon footer stats -->
+        <div class="bg-card border-t border-border px-4 py-3 flex gap-4 text-xs text-gray-500 shrink-0">
+          <span>{{ soon.length - soonDone }} remaining</span>
+          <span class="text-gold">{{ soonPoints }} pts</span>
+          <span v-if="soonDone">{{ soonDone }} done</span>
+        </div>
       </div>
-    </div>
+    </transition>
 
   </div>
 </div>
@@ -402,6 +428,8 @@ createApp({
     const showSyncHelp  = ref(false);
     const showFilters   = ref(false);
     const showSoonSheet = ref(false);
+    const headerHidden  = ref(false);
+    let lastScrollTop   = 0;
     const copied        = ref(false);
     const syncImported  = ref(0);
     const syncUrl       = ref('');
@@ -423,7 +451,7 @@ createApp({
     // Persist state
     watch(appDone,    v => LS.set(DONE_KEY,   [...v]), { deep: true });
     watch(igDoneIds,  v => LS.set(IG_KEY,     [...v]), { deep: true });
-    watch(soon,       v => LS.set(SOON_KEY,   v));
+    watch(soon,       v => LS.set(SOON_KEY,   v), { deep: true });
     watch(activeAreas,v => LS.set(AREAS_KEY,  [...v]), { deep: true });
     watch(snoozed,    v => LS.set(SNOOZE_KEY, v),      { deep: true });
 
@@ -609,6 +637,12 @@ createApp({
       i >= 0 ? soon.value.splice(i, 1) : soon.value.push(id);
     }
 
+    function handleScroll(e) {
+      const st = e.target.scrollTop;
+      headerHidden.value = st > lastScrollTop && st > 60;
+      lastScrollTop = st;
+    }
+
     function isSnoozed(id) {
       const exp = snoozed.value[id];
       if (!exp) return false;
@@ -762,7 +796,8 @@ createApp({
       filtered, areaList,
       appDoneCount, igDoneCount, donePoints, totalPoints, soonPoints, soonDone,
       syncImported, syncUrl,
-      showFilters, showSoonSheet, activeFilterCount,
+      showFilters, showSoonSheet, headerHidden, activeFilterCount,
+      handleScroll,
       openWiki, copyBookmarklet, copySyncUrl, dismissSync,
       isEffectiveDone, inSoon, isSnoozed, snooze, unsnooze, toggleDone, toggleSoon,
       reqLabel, reqStyle, fmtArea, pctColor, scoreColor,
