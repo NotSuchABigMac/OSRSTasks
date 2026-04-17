@@ -58,6 +58,10 @@
       </button>
       <template v-if="igDoneIds.size">
         <span class="text-green-400 text-xs">✓ {{ igDoneIds.size }} in-game</span>
+        <button @click="copySyncUrl"
+          class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors whitespace-nowrap">
+          {{ copied ? 'Copied!' : 'Copy sync link' }}
+        </button>
       </template>
     </div>
   </header>
@@ -426,7 +430,9 @@ createApp({
     }
 
     function copySyncUrl() {
-      navigator.clipboard.writeText(syncUrl.value).then(() => {
+      const encoded = btoa([...igDoneIds.value].join(','));
+      const url = `${APP_URL}?sync=${encoded}`;
+      navigator.clipboard.writeText(url).then(() => {
         copied.value = true;
         setTimeout(() => copied.value = false, 2000);
       });
