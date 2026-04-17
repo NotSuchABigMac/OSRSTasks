@@ -646,8 +646,6 @@ createApp({
       return sortDir.value > 0 ? '↑' : '↓';
     }
 
-    const TIER_ORDER = { easy: 0, medium: 1, hard: 2, elite: 3, master: 4 };
-
     const areaList = computed(() =>
       [...new Set(tasks.value.map(t => t.area).filter(Boolean))].sort()
     );
