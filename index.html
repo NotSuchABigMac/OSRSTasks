@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DPL Tasks</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: '#1a1917',
+            panel:   '#222120',
+            card:    '#2c2a26',
+            border:  '#3a3830',
+            gold:    '#c8a000',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .tier-easy   { color: #4ade80; }
+    .tier-medium { color: #facc15; }
+    .tier-hard   { color: #fb923c; }
+    .tier-elite  { color: #c084fc; }
+    .tier-master { color: #f43f5e; }
+
+    tr.row-done td { opacity: 0.4; }
+    tr.row-done td .task-name { text-decoration: line-through; }
+    tbody tr:hover td { background: rgba(200,160,0,0.035); }
+
+    ::-webkit-scrollbar            { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track      { background: #1a1917; }
+    ::-webkit-scrollbar-thumb      { background: #3a3830; border-radius: 3px; }
+
+    .soon-slide-enter-active, .soon-slide-leave-active { transition: width .2s ease; overflow: hidden; }
+    .soon-slide-enter-from, .soon-slide-leave-to       { width: 0 !important; }
+  </style>
+</head>
+
+<body class="bg-surface text-gray-200 text-sm select-none">
+<div id="app" class="flex flex-col" style="height:100dvh">
+
+  <!-- ── Top bar ── -->
+  <header class="bg-card border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
+    <span class="text-gold font-bold tracking-wide whitespace-nowrap">Demonic Pacts Tasks</span>
+    <div class="flex-1"></div>
+
+    <!-- WikiSync sync controls -->
+    <div class="flex items-center gap-2">
+      <button @click="openWiki"
+        class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors whitespace-nowrap">
+        Open Wiki
+      </button>
+      <button @click="showSyncHelp = !showSyncHelp"
+        class="text-xs px-3 py-1.5 rounded border border-border text-gray-400 hover:border-gold hover:text-gold transition-colors">
+        Sync help
+      </button>
+      <template v-if="igDoneIds.size">
+        <span class="text-green-400 text-xs">✓ {{ igDoneIds.size }} in-game</span>
+      </template>
+    </div>
+  </header>
+
+  <!-- ── Sync help panel ── -->
+  <div v-if="showSyncHelp" class="bg-panel border-b border-border px-4 py-3 text-xs text-gray-400 space-y-2 shrink-0">
+    <p class="text-gray-300 font-medium">How to sync in-game completions:</p>
+    <ol class="list-decimal list-inside space-y-1">
+      <li>Click <span class="text-gold">Open Wiki</span> to open the DPL Tasks page in a new tab.</li>
+      <li>Enter your username in the lookup box and wait for WikiSync to load.</li>
+      <li>Run the bookmarklet below in that tab (bookmark it or paste in the console).</li>
+      <li>Your completed tasks will appear here automatically.</li>
+    </ol>
+    <div class="mt-2">
+      <p class="text-gray-500 mb-1">Bookmarklet (drag to bookmarks bar, or paste into the wiki page console):</p>
+      <div class="flex gap-2">
+        <code class="flex-1 bg-surface rounded px-2 py-1 text-green-400 text-xs break-all">{{ bookmarklet }}</code>
+        <button @click="copyBookmarklet" class="shrink-0 text-xs px-2 py-1 rounded bg-card border border-border hover:border-gold hover:text-gold transition-colors">
+          {{ copied ? 'Copied!' : 'Copy' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stats bar ── -->
+  <div class="bg-panel border-b border-border px-4 py-1.5 flex items-center gap-5 text-xs text-gray-500 shrink-0">
+    <span>
+      <span class="text-gray-300">{{ appDoneCount }}</span>/{{ tasks.length }} ticked
+    </span>
+    <span v-if="igDoneIds.size">
+      <span class="text-green-400">{{ igDoneCount }}</span> in-game
+    </span>
+    <span class="text-gold">{{ donePoints }}/{{ totalPoints }} pts</span>
+    <div class="flex-1"></div>
+    <span>{{ loading ? 'Fetching wiki…' : lastFetch ? `Cached ${lastFetch}` : '' }}</span>
+    <button @click="forceRefresh" class="hover:text-gold transition-colors">↻ Refresh</button>
+  </div>
+
+  <!-- ── Filters ── -->
+  <div class="bg-panel border-b border-border px-4 py-2 flex flex-wrap gap-2 items-center shrink-0">
+    <input v-model="q" placeholder="Search…"
+      class="bg-surface border border-border rounded px-2.5 py-1 text-xs w-40 focus:outline-none focus:border-gold placeholder-gray-600" />
+
+    <select v-model="filterArea"
+      class="bg-surface border border-border rounded px-2.5 py-1 text-xs focus:outline-none text-gray-300">
+      <option value="">All areas</option>
+      <option v-for="a in areaList" :key="a" :value="a">{{ fmtArea(a) }}</option>
+    </select>
+
+    <div class="flex gap-1">
+      <button v-for="t in TIERS" :key="t" @click="toggleTier(t)"
+        :class="['px-2 py-0.5 rounded text-xs border capitalize transition-colors',
+          activeTiers.has(t)
+            ? tierActiveClass(t)
+            : 'border-border text-gray-600 hover:border-gray-500 hover:text-gray-400']">
+        {{ t }}
+      </button>
+    </div>
+
+    <label class="flex items-center gap-1 cursor-pointer text-xs text-gray-400">
+      <input type="checkbox" v-model="hideDone" class="accent-yellow-400" /> Hide done
+    </label>
+    <label class="flex items-center gap-1 cursor-pointer text-xs text-gray-400">
+      <input type="checkbox" v-model="onlySoonFilter" class="accent-yellow-400" /> Soon only
+    </label>
+
+    <div class="flex items-center gap-1 text-xs text-gray-500">
+      Pts
+      <input type="number" v-model.number="minPts" placeholder="0"
+        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold ml-1" />
+      <span class="text-gray-700">–</span>
+      <input type="number" v-model.number="maxPts" placeholder="∞"
+        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold" />
+    </div>
+
+    <div class="flex items-center gap-1 text-xs text-gray-500">
+      Done%
+      <input type="number" v-model.number="minPct" placeholder="0" min="0" max="100"
+        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold ml-1" />
+      <span class="text-gray-700">–</span>
+      <input type="number" v-model.number="maxPct" placeholder="100" min="0" max="100"
+        class="bg-surface border border-border rounded px-2 py-0.5 w-14 text-xs focus:outline-none focus:border-gold" />
+    </div>
+
+    <button @click="clearFilters" class="ml-auto text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+    <span class="text-gray-600 text-xs">{{ filtered.length }} shown</span>
+  </div>
+
+  <!-- ── Body ── -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Table -->
+    <div class="flex-1 overflow-auto">
+      <div v-if="loading && !tasks.length"
+        class="flex items-center justify-center h-40 text-gray-500">
+        Loading tasks from wiki…
+      </div>
+      <div v-else-if="fetchError"
+        class="flex items-center justify-center h-40 text-gray-500 gap-2">
+        {{ fetchError }}
+        <button @click="forceRefresh" class="text-gold hover:underline">Retry</button>
+      </div>
+
+      <table v-else class="w-full border-collapse">
+        <thead class="sticky top-0 z-10 bg-card shadow-sm">
+          <tr class="border-b border-border">
+            <th class="w-8 px-2 py-2"></th>
+            <th @click="setSort('area')"
+              class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
+              Area <span class="opacity-50">{{ sortInd('area') }}</span>
+            </th>
+            <th @click="setSort('name')"
+              class="px-3 py-2 text-left text-gold font-medium cursor-pointer hover:text-yellow-300 text-xs">
+              Task <span class="opacity-50">{{ sortInd('name') }}</span>
+            </th>
+            <th class="px-3 py-2 text-left text-gold font-medium text-xs">Requirements</th>
+            <th @click="setSort('points')"
+              class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
+              Pts <span class="opacity-50">{{ sortInd('points') }}</span>
+            </th>
+            <th @click="setSort('completionPct')"
+              class="px-3 py-2 text-right text-gold font-medium cursor-pointer hover:text-yellow-300 whitespace-nowrap text-xs">
+              Done% <span class="opacity-50">{{ sortInd('completionPct') }}</span>
+            </th>
+            <th class="w-8 px-2 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in filtered" :key="t.taskId"
+            :class="['border-b border-[#222120] transition-opacity',
+              isEffectiveDone(t.taskId) ? 'row-done' : '']">
+
+            <!-- Tick -->
+            <td class="px-2 py-1.5 text-center">
+              <input type="checkbox" :checked="appDone.has(t.taskId)" @change="toggleDone(t.taskId)"
+                class="accent-yellow-400 cursor-pointer w-3.5 h-3.5" />
+            </td>
+
+            <!-- Area -->
+            <td class="px-3 py-1.5 text-gray-400 whitespace-nowrap text-xs">
+              {{ fmtArea(t.area) }}
+            </td>
+
+            <!-- Task name + description -->
+            <td class="px-3 py-1.5 max-w-xs">
+              <div class="flex items-start gap-2">
+                <span :class="['text-xs font-bold mt-0.5 shrink-0 uppercase', `tier-${t.tier}`]"
+                  :title="t.tier">{{ t.tier.charAt(0) }}</span>
+                <div class="min-w-0">
+                  <div class="task-name font-medium text-gray-200 leading-tight">{{ t.name }}</div>
+                  <div v-if="t.description && t.description !== t.name"
+                    class="text-xs text-gray-500 mt-0.5 leading-tight">{{ t.description }}</div>
+                </div>
+                <span v-if="igDoneIds.has(t.taskId)"
+                  class="shrink-0 text-green-400 text-xs ml-1 mt-0.5" title="Completed in-game (WikiSync)">✓</span>
+              </div>
+            </td>
+
+            <!-- Requirements -->
+            <td class="px-3 py-1.5">
+              <span v-if="!t.requirements.length" class="text-gray-700 text-xs">—</span>
+              <div v-else class="flex flex-wrap gap-1">
+                <span v-for="r in t.requirements" :key="r.key"
+                  :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]"
+                  :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">
+                  {{ reqLabel(r) }}
+                </span>
+              </div>
+            </td>
+
+            <!-- Points -->
+            <td class="px-3 py-1.5 text-right">
+              <span :class="['font-semibold text-xs', `tier-${t.tier}`]">{{ t.points }}</span>
+            </td>
+
+            <!-- Completion % -->
+            <td class="px-3 py-1.5 text-right">
+              <span :class="['text-xs', pctColor(t.completionPct)]">
+                {{ t.completionPct > 0 ? t.completionPct.toFixed(1) + '%' : '—' }}
+              </span>
+            </td>
+
+            <!-- Soon star -->
+            <td class="px-2 py-1.5 text-center">
+              <button @click="toggleSoon(t.taskId)"
+                :class="['text-base leading-none transition-colors',
+                  inSoon(t.taskId) ? 'text-gold' : 'text-gray-700 hover:text-gold']"
+                title="Add to Soon">★</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Soon panel ── -->
+    <transition name="soon-slide">
+      <div v-if="soon.length" class="w-60 border-l border-border bg-panel flex flex-col shrink-0 overflow-hidden">
+        <div class="px-4 py-2.5 border-b border-border flex items-center justify-between shrink-0">
+          <span class="text-gold font-semibold text-xs tracking-wide">SOON ({{ soon.length }})</span>
+          <button @click="soon = []" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+        </div>
+        <div class="flex-1 overflow-auto divide-y divide-[#2c2a26]">
+          <div v-for="id in soon" :key="id" class="px-3 py-2.5 flex items-start gap-2">
+            <input type="checkbox" :checked="appDone.has(id)" @change="toggleDone(id)"
+              class="accent-yellow-400 cursor-pointer mt-0.5 w-3.5 h-3.5 shrink-0" />
+            <div class="flex-1 min-w-0">
+              <div :class="['text-xs leading-tight truncate',
+                isEffectiveDone(id) ? 'line-through text-gray-500' : 'text-gray-200']">
+                {{ taskMap[id]?.name }}
+              </div>
+              <div class="flex gap-2 mt-1">
+                <span :class="['text-xs capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
+                <span class="text-xs text-gray-500">{{ taskMap[id]?.points }} pts</span>
+              </div>
+            </div>
+            <button @click="toggleSoon(id)"
+              class="text-gray-600 hover:text-red-400 text-xs leading-none mt-0.5 transition-colors shrink-0">✕</button>
+          </div>
+        </div>
+        <div class="px-4 py-2 border-t border-border text-xs text-gray-500 shrink-0">
+          {{ soonPoints }} pts · {{ soonDone }} done
+        </div>
+      </div>
+    </transition>
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const { createApp, ref, computed, onMounted, watch } = Vue;
+
+const TIERS  = ['easy','medium','hard','elite','master'];
+const SKILLS = new Set(['attack','strength','defence','hitpoints','ranged','prayer','magic',
+  'cooking','woodcutting','fletching','fishing','firemaking','crafting','smithing','mining',
+  'herblore','agility','thieving','slayer','farming','runecrafting','hunter','construction','sailing']);
+
+const LS = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const CACHE_KEY  = 'dpl_tasks_v1';
+const DONE_KEY   = 'dpl_done_v1';
+const SOON_KEY   = 'dpl_soon_v1';
+const IG_KEY     = 'dpl_ig_v1';
+const CACHE_TTL  = 60 * 60 * 1000;
+
+// Bookmarklet that runs on the wiki page after WikiSync loads
+const BOOKMARKLET_SRC = `(function(){
+  var rows = document.querySelectorAll('tr[data-taskid]');
+  var completed = [];
+  rows.forEach(function(r){
+    if(r.classList.contains('wikisync-completed')||r.classList.contains('highlight-on')){
+      completed.push(r.dataset.taskid);
+    }
+  });
+  var payload = JSON.stringify({type:'dpl-sync',completedIds:completed});
+  if(window.opener&&!window.opener.closed){
+    window.opener.postMessage(payload,'*');
+    alert('Synced '+completed.length+' completed tasks!');
+  } else {
+    navigator.clipboard.writeText(payload).then(function(){
+      alert('Copied '+completed.length+' completed tasks. Paste in the tracker.');
+    });
+  }
+})();`;
+
+createApp({
+  setup() {
+    const tasks      = ref([]);
+    const taskMap    = computed(() => Object.fromEntries(tasks.value.map(t => [t.taskId, t])));
+    const loading    = ref(false);
+    const fetchError = ref('');
+    const lastFetch  = ref('');
+
+    const appDone  = ref(new Set(LS.get(DONE_KEY, [])));
+    const igDoneIds = ref(new Set(LS.get(IG_KEY, [])));
+    const soon     = ref(LS.get(SOON_KEY, []));
+
+    const showSyncHelp = ref(false);
+    const copied       = ref(false);
+
+    // Filters
+    const q             = ref('');
+    const filterArea    = ref('');
+    const activeTiers   = ref(new Set());
+    const hideDone      = ref(false);
+    const onlySoonFilter = ref(false);
+    const minPts        = ref('');
+    const maxPts        = ref('');
+    const minPct        = ref('');
+    const maxPct        = ref('');
+
+    // Sort
+    const sortKey = ref('');
+    const sortDir = ref(1);
+
+    // Persist state
+    watch(appDone,   v => LS.set(DONE_KEY, [...v]), { deep: true });
+    watch(igDoneIds, v => LS.set(IG_KEY,   [...v]), { deep: true });
+    watch(soon,      v => LS.set(SOON_KEY, v));
+
+    // ── Bookmarklet ──────────────────────────────────────────────────────────
+
+    const bookmarklet = computed(() => `javascript:${encodeURIComponent(BOOKMARKLET_SRC)}`);
+
+    function copyBookmarklet() {
+      navigator.clipboard.writeText(bookmarklet.value).then(() => {
+        copied.value = true;
+        setTimeout(() => copied.value = false, 2000);
+      });
+    }
+
+    let wikiWindow = null;
+    function openWiki() {
+      wikiWindow = window.open('https://oldschool.runescape.wiki/w/Demonic_Pacts_League/Tasks', 'dpl-wiki');
+      showSyncHelp.value = true;
+    }
+
+    // Listen for postMessage from bookmarklet
+    window.addEventListener('message', (e) => {
+      let data;
+      try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+      if (data?.type !== 'dpl-sync' || !Array.isArray(data.completedIds)) return;
+      igDoneIds.value = new Set(data.completedIds);
+    });
+
+    // ── Task fetching ────────────────────────────────────────────────────────
+
+    function parseReqs(cell) {
+      if (!cell) return [];
+      const text = cell.textContent?.trim() || '';
+      if (!text || /^n\/a$/i.test(text) || text === '—') return [];
+
+      const reqs = [];
+      const seen = new Set();
+
+      // Strategy 1: skill <img alt="Skill"> followed by a number
+      cell.querySelectorAll('img').forEach(img => {
+        const skill = (img.alt || img.title || '').trim().toLowerCase();
+        if (!SKILLS.has(skill) || seen.has(skill)) return;
+        let node = img.nextSibling;
+        while (node) {
+          const m = (node.textContent || '').match(/^\s*(\d+)/);
+          if (m) {
+            seen.add(skill);
+            reqs.push({ type: 'skill', skill, level: +m[1], key: `${skill}-${m[1]}` });
+            return;
+          }
+          if (node.nodeType === 1) break;
+          node = node.nextSibling;
+        }
+        // fallback: scan cell text for "Skill N"
+        const m2 = text.match(new RegExp(`${skill}\\s+(\\d+)`, 'i'));
+        if (m2) { seen.add(skill); reqs.push({ type: 'skill', skill, level: +m2[1], key: `${skill}-${m2[1]}` }); }
+      });
+
+      // Strategy 2: pure text if no images matched
+      if (reqs.length === 0) {
+        SKILLS.forEach(skill => {
+          if (seen.has(skill)) return;
+          const m = text.match(new RegExp(`(?:^|\\W)${skill}\\s+(\\d+)`, 'i'))
+                 || text.match(new RegExp(`(\\d+)\\s+${skill}(?:\\W|$)`, 'i'));
+          if (m) {
+            const level = +(m[1] || m[2]);
+            seen.add(skill);
+            reqs.push({ type: 'skill', skill, level, key: `${skill}-${level}` });
+          }
+        });
+      }
+
+      // Remaining non-skill text → generic req badge
+      let rest = text;
+      reqs.forEach(r => {
+        rest = rest.replace(new RegExp(`\\b${r.skill}\\s*${r.level}\\b|\\b${r.level}\\s*${r.skill}\\b`, 'gi'), '');
+      });
+      rest = rest.replace(/[\s,;\/]+/g, ' ').trim();
+      if (rest && rest.toLowerCase() !== 'n/a' && rest.length > 2) {
+        rest.split(/\s{2,}/).filter(s => s.trim().length > 2).forEach(s => {
+          const label = s.trim();
+          reqs.push({ type: 'text', text: label, key: `txt-${label.slice(0, 30)}` });
+        });
+      }
+
+      return reqs;
+    }
+
+    async function loadTasks(force = false) {
+      if (!force) {
+        const c = LS.get(CACHE_KEY, null);
+        if (c?.timestamp && Date.now() - c.timestamp < CACHE_TTL && c.data?.length) {
+          tasks.value = c.data;
+          lastFetch.value = new Date(c.timestamp).toLocaleTimeString();
+          return;
+        }
+      }
+      loading.value = true;
+      fetchError.value = '';
+      try {
+        const res  = await fetch('https://oldschool.runescape.wiki/api.php?action=parse&page=Demonic_Pacts_League/Tasks&prop=text&format=json&origin=*');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const html = json.parse?.text?.['*'];
+        if (!html) throw new Error('No HTML in response');
+
+        const doc  = new DOMParser().parseFromString(html, 'text/html');
+        const rows = [...doc.querySelectorAll('tr[data-taskid]')];
+
+        const parsed = rows.map(row => {
+          const cells = row.querySelectorAll('td');
+          return {
+            taskId:        row.dataset.taskid,
+            area:          row.dataset.leagueAreaForFiltering || '',
+            tier:          row.dataset.leagueTier || '',
+            points:        +(row.dataset.leaguePoints || 0),
+            name:          cells[1]?.textContent?.trim() || '',
+            description:   cells[2]?.textContent?.trim() || '',
+            requirements:  parseReqs(cells[3]),
+            completionPct: parseFloat(cells[5]?.textContent) || 0,
+          };
+        }).filter(t => t.taskId && t.name);
+
+        tasks.value = parsed;
+        const ts = Date.now();
+        LS.set(CACHE_KEY, { data: parsed, timestamp: ts });
+        lastFetch.value = new Date(ts).toLocaleTimeString();
+      } catch (e) {
+        fetchError.value = `Failed to load: ${e.message}`;
+        console.error(e);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function forceRefresh() { await loadTasks(true); }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isEffectiveDone(id) { return appDone.value.has(id) || igDoneIds.value.has(id); }
+    function inSoon(id)          { return soon.value.includes(id); }
+
+    function toggleDone(id) {
+      const s = new Set(appDone.value);
+      s.has(id) ? s.delete(id) : s.add(id);
+      appDone.value = s;
+    }
+
+    function toggleSoon(id) {
+      const i = soon.value.indexOf(id);
+      i >= 0 ? soon.value.splice(i, 1) : soon.value.push(id);
+    }
+
+    function reqLabel(r) {
+      if (r.type === 'skill') {
+        return `${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} ${r.level}`;
+      }
+      return r.text.length > 24 ? r.text.slice(0, 24) + '…' : r.text;
+    }
+
+    function reqStyle(r) {
+      // Skill requirements are always shown neutral (we don't have player data)
+      return 'bg-card text-gray-400 border-border';
+    }
+
+    function fmtArea(a) {
+      return (a || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function pctColor(p) {
+      if (p >= 75) return 'text-green-400';
+      if (p >= 40) return 'text-yellow-400';
+      if (p > 0)   return 'text-red-400';
+      return 'text-gray-600';
+    }
+
+    // ── Filters / sort ────────────────────────────────────────────────────────
+
+    function toggleTier(t) {
+      const s = new Set(activeTiers.value);
+      s.has(t) ? s.delete(t) : s.add(t);
+      activeTiers.value = s;
+    }
+
+    function tierActiveClass(t) {
+      return {
+        easy:   'border-green-500 text-green-400',
+        medium: 'border-yellow-400 text-yellow-300',
+        hard:   'border-orange-400 text-orange-300',
+        elite:  'border-purple-400 text-purple-300',
+        master: 'border-rose-500 text-rose-400',
+      }[t] || 'border-gray-400 text-gray-300';
+    }
+
+    function clearFilters() {
+      q.value = ''; filterArea.value = ''; activeTiers.value = new Set();
+      hideDone.value = false; onlySoonFilter.value = false;
+      minPts.value = ''; maxPts.value = ''; minPct.value = ''; maxPct.value = '';
+    }
+
+    function setSort(key) {
+      sortDir.value = sortKey.value === key ? -sortDir.value : 1;
+      sortKey.value = key;
+    }
+
+    function sortInd(key) {
+      if (sortKey.value !== key) return '';
+      return sortDir.value > 0 ? '↑' : '↓';
+    }
+
+    const TIER_ORDER = { easy: 0, medium: 1, hard: 2, elite: 3, master: 4 };
+
+    const areaList = computed(() =>
+      [...new Set(tasks.value.map(t => t.area).filter(Boolean))].sort()
+    );
+
+    const filtered = computed(() => {
+      let list = tasks.value;
+      const qs = q.value.trim().toLowerCase();
+
+      if (qs)                    list = list.filter(t => t.name.toLowerCase().includes(qs) || t.description.toLowerCase().includes(qs));
+      if (filterArea.value)      list = list.filter(t => t.area === filterArea.value);
+      if (activeTiers.value.size) list = list.filter(t => activeTiers.value.has(t.tier));
+      if (hideDone.value)        list = list.filter(t => !isEffectiveDone(t.taskId));
+      if (onlySoonFilter.value)  list = list.filter(t => inSoon(t.taskId));
+      if (minPts.value !== '')   list = list.filter(t => t.points >= +minPts.value);
+      if (maxPts.value !== '')   list = list.filter(t => t.points <= +maxPts.value);
+      if (minPct.value !== '')   list = list.filter(t => t.completionPct >= +minPct.value);
+      if (maxPct.value !== '')   list = list.filter(t => t.completionPct <= +maxPct.value);
+
+      if (sortKey.value) {
+        list = [...list].sort((a, b) => {
+          let va = a[sortKey.value], vb = b[sortKey.value];
+          if (typeof va === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+          return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir.value;
+        });
+      }
+
+      return list;
+    });
+
+    // ── Stats ────────────────────────────────────────────────────────────────
+
+    const appDoneCount = computed(() => tasks.value.filter(t => appDone.value.has(t.taskId)).length);
+    const igDoneCount  = computed(() => tasks.value.filter(t => igDoneIds.value.has(t.taskId)).length);
+    const donePoints   = computed(() => tasks.value.filter(t => isEffectiveDone(t.taskId)).reduce((s, t) => s + t.points, 0));
+    const totalPoints  = computed(() => tasks.value.reduce((s, t) => s + t.points, 0));
+    const soonPoints   = computed(() => soon.value.reduce((s, id) => s + (taskMap.value[id]?.points || 0), 0));
+    const soonDone     = computed(() => soon.value.filter(id => isEffectiveDone(id)).length);
+
+    onMounted(() => loadTasks());
+
+    return {
+      TIERS, tasks, taskMap, loading, fetchError, lastFetch,
+      appDone, igDoneIds, soon,
+      showSyncHelp, copied, bookmarklet,
+      q, filterArea, activeTiers, hideDone, onlySoonFilter,
+      minPts, maxPts, minPct, maxPct,
+      sortKey, sortDir,
+      filtered, areaList,
+      appDoneCount, igDoneCount, donePoints, totalPoints, soonPoints, soonDone,
+      openWiki, copyBookmarklet,
+      isEffectiveDone, inSoon, toggleDone, toggleSoon,
+      reqLabel, reqStyle, fmtArea, pctColor,
+      toggleTier, tierActiveClass, clearFilters, setSort, sortInd,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
