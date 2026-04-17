@@ -133,6 +133,18 @@
   <!-- ── Collapsible filter panel ── -->
   <div v-if="showFilters" class="bg-panel border-b border-border px-3 py-3 space-y-3 shrink-0">
 
+    <!-- Sort -->
+    <div class="flex flex-wrap gap-2">
+      <span class="text-xs text-gray-600 self-center mr-1">Sort</span>
+      <button v-for="opt in SORT_OPTS" :key="opt.key"
+        @click="setSort(opt.key)"
+        :class="['min-h-[44px] px-4 rounded border text-sm transition-colors',
+          sortKey === opt.key ? 'border-gold text-gold' : 'border-border text-gray-500 active:border-gray-400']">
+        {{ opt.label }}
+        <span v-if="sortKey === opt.key" class="opacity-60 text-xs ml-1">{{ sortDir > 0 ? '↑' : '↓' }}</span>
+      </button>
+    </div>
+
     <!-- Tiers -->
     <div class="flex flex-wrap gap-2">
       <button v-for="t in TIERS" :key="t" @click="toggleTier(t)"
@@ -377,7 +389,14 @@
 <script>
 const { createApp, ref, computed, onMounted, watch } = Vue;
 
-const TIERS  = ['easy','medium','hard','elite','master'];
+const TIERS     = ['easy','medium','hard','elite','master'];
+const SORT_OPTS = [
+  { key: 'score',         label: 'Score'    },
+  { key: 'completionPct', label: 'Done%'    },
+  { key: 'points',        label: 'Points'   },
+  { key: 'name',          label: 'Name'     },
+  { key: 'area',          label: 'Area'     },
+];
 const SKILLS = new Set(['attack','strength','defence','hitpoints','ranged','prayer','magic',
   'cooking','woodcutting','fletching','fishing','firemaking','crafting','smithing','mining',
   'herblore','agility','thieving','slayer','farming','runecrafting','hunter','construction','sailing']);
@@ -628,7 +647,14 @@ createApp({
 
     function toggleDone(id) {
       const s = new Set(appDone.value);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) {
+        s.delete(id);
+      } else {
+        s.add(id);
+        // Remove from Soon when ticked
+        const i = soon.value.indexOf(id);
+        if (i >= 0) soon.value.splice(i, 1);
+      }
       appDone.value = s;
     }
 
@@ -787,7 +813,7 @@ createApp({
     onMounted(() => { importFromUrl(); loadTasks(); });
 
     return {
-      TIERS, tasks, taskMap, loading, fetchError, lastFetch,
+      TIERS, SORT_OPTS, tasks, taskMap, loading, fetchError, lastFetch,
       appDone, igDoneIds, soon,
       showSyncHelp, copied, bookmarklet,
       q, activeTiers, onlySoonFilter,
