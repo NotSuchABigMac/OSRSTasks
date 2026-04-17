@@ -64,6 +64,12 @@
     </div>
   </header>
 
+  <!-- ── Sync imported banner ── -->
+  <div v-if="syncImported" class="bg-green-950 border-b border-green-800 px-4 py-2 text-xs text-green-400 flex items-center justify-between shrink-0">
+    <span>✓ Imported {{ syncImported }} in-game completions from WikiSync.</span>
+    <button @click="syncImported = 0" class="text-green-600 hover:text-green-400">✕</button>
+  </div>
+
   <!-- ── Sync help panel ── -->
   <div v-if="showSyncHelp" class="bg-panel border-b border-border px-4 py-3 text-xs text-gray-400 space-y-2 shrink-0">
     <p class="text-gray-300 font-medium">How to sync in-game completions:</p>
@@ -309,6 +315,8 @@ const IG_KEY     = 'dpl_ig_v1';
 const CACHE_TTL  = 60 * 60 * 1000;
 
 // Bookmarklet that runs on the wiki page after WikiSync loads
+const APP_URL = 'https://notsuchabigmac.github.io/OSRSTasks/';
+
 const BOOKMARKLET_SRC = `(function(){
   var rows = document.querySelectorAll('tr[data-taskid]');
   var completed = [];
@@ -317,15 +325,9 @@ const BOOKMARKLET_SRC = `(function(){
       completed.push(r.dataset.taskid);
     }
   });
-  var payload = JSON.stringify({type:'dpl-sync',completedIds:completed});
-  if(window.opener&&!window.opener.closed){
-    window.opener.postMessage(payload,'*');
-    alert('Synced '+completed.length+' completed tasks!');
-  } else {
-    navigator.clipboard.writeText(payload).then(function(){
-      alert('Copied '+completed.length+' completed tasks. Paste in the tracker.');
-    });
-  }
+  var encoded = btoa(completed.join(','));
+  var url = '${APP_URL}?sync=' + encoded;
+  window.open(url, '_blank');
 })();`;
 
 createApp({
@@ -340,8 +342,9 @@ createApp({
     const igDoneIds = ref(new Set(LS.get(IG_KEY, [])));
     const soon     = ref(LS.get(SOON_KEY, []));
 
-    const showSyncHelp = ref(false);
-    const copied       = ref(false);
+    const showSyncHelp  = ref(false);
+    const copied        = ref(false);
+    const syncImported  = ref(0);
 
     // Filters
     const q             = ref('');
@@ -380,13 +383,22 @@ createApp({
       showSyncHelp.value = true;
     }
 
-    // Listen for postMessage from bookmarklet
-    window.addEventListener('message', (e) => {
-      let data;
-      try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
-      if (data?.type !== 'dpl-sync' || !Array.isArray(data.completedIds)) return;
-      igDoneIds.value = new Set(data.completedIds);
-    });
+    // ── URL sync import ──────────────────────────────────────────────────────
+
+    function importFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('sync');
+      if (!raw) return;
+      try {
+        const ids = atob(raw).split(',').filter(Boolean);
+        if (ids.length) {
+          igDoneIds.value = new Set(ids);
+          syncImported.value = ids.length;
+        }
+      } catch {}
+      // Clean the URL so it doesn't re-import on refresh
+      window.history.replaceState({}, '', window.location.pathname);
+    }
 
     // ── Task fetching ────────────────────────────────────────────────────────
 
@@ -610,7 +622,7 @@ createApp({
     const soonPoints   = computed(() => soon.value.reduce((s, id) => s + (taskMap.value[id]?.points || 0), 0));
     const soonDone     = computed(() => soon.value.filter(id => isEffectiveDone(id)).length);
 
-    onMounted(() => loadTasks());
+    onMounted(() => { importFromUrl(); loadTasks(); });
 
     return {
       TIERS, tasks, taskMap, loading, fetchError, lastFetch,
@@ -621,6 +633,7 @@ createApp({
       sortKey, sortDir,
       filtered, areaList,
       appDoneCount, igDoneCount, donePoints, totalPoints, soonPoints, soonDone,
+      syncImported,
       openWiki, copyBookmarklet,
       isEffectiveDone, inSoon, toggleDone, toggleSoon,
       reqLabel, reqStyle, fmtArea, pctColor,
