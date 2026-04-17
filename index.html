@@ -65,9 +65,13 @@
   </header>
 
   <!-- ── Sync imported banner ── -->
-  <div v-if="syncImported" class="bg-green-950 border-b border-green-800 px-4 py-2 text-xs text-green-400 flex items-center justify-between shrink-0">
-    <span>✓ Imported {{ syncImported }} in-game completions from WikiSync.</span>
-    <button @click="syncImported = 0" class="text-green-600 hover:text-green-400">✕</button>
+  <div v-if="syncImported" class="bg-green-950 border-b border-green-800 px-4 py-2 text-xs text-green-400 flex items-center gap-3 shrink-0">
+    <span>✓ Imported {{ syncImported }} in-game completions.</span>
+    <button @click="copySyncUrl"
+      class="px-2 py-0.5 rounded border border-green-700 hover:border-green-400 transition-colors whitespace-nowrap">
+      {{ copied ? 'Copied!' : 'Copy sync link' }}
+    </button>
+    <button @click="dismissSync" class="ml-auto text-green-700 hover:text-green-400">✕</button>
   </div>
 
   <!-- ── Sync help panel ── -->
@@ -345,6 +349,7 @@ createApp({
     const showSyncHelp  = ref(false);
     const copied        = ref(false);
     const syncImported  = ref(0);
+    const syncUrl       = ref('');
 
     // Filters
     const q             = ref('');
@@ -394,10 +399,23 @@ createApp({
         if (ids.length) {
           igDoneIds.value = new Set(ids);
           syncImported.value = ids.length;
+          syncUrl.value = window.location.href;
         }
       } catch {}
-      // Clean the URL so it doesn't re-import on refresh
+      // Clean URL now so refresh doesn't re-import, but we keep syncUrl for copying
       window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    function copySyncUrl() {
+      navigator.clipboard.writeText(syncUrl.value).then(() => {
+        copied.value = true;
+        setTimeout(() => copied.value = false, 2000);
+      });
+    }
+
+    function dismissSync() {
+      syncImported.value = 0;
+      syncUrl.value = '';
     }
 
     // ── Task fetching ────────────────────────────────────────────────────────
@@ -633,8 +651,8 @@ createApp({
       sortKey, sortDir,
       filtered, areaList,
       appDoneCount, igDoneCount, donePoints, totalPoints, soonPoints, soonDone,
-      syncImported,
-      openWiki, copyBookmarklet,
+      syncImported, syncUrl,
+      openWiki, copyBookmarklet, copySyncUrl, dismissSync,
       isEffectiveDone, inSoon, toggleDone, toggleSoon,
       reqLabel, reqStyle, fmtArea, pctColor,
       toggleTier, tierActiveClass, clearFilters, setSort, sortInd,
