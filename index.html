@@ -665,7 +665,9 @@ createApp({
 
     function handleScroll(e) {
       const st = e.target.scrollTop;
-      headerHidden.value = st > lastScrollTop && st > 60;
+      const scrollingDown = st > lastScrollTop && st > 60;
+      headerHidden.value = scrollingDown;
+      if (scrollingDown) showFilters.value = false;
       lastScrollTop = st;
     }
 
