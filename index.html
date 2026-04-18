@@ -236,7 +236,7 @@
             </div>
             <div v-if="t.requirements.length" class="flex flex-wrap gap-1 mt-1.5">
               <span v-for="r in t.requirements" :key="r.key"
-                :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]">
+                :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, t.taskId)]">
                 {{ reqLabel(r) }}
               </span>
             </div>
@@ -293,7 +293,7 @@
             <td class="px-3 py-1.5">
               <span v-if="!t.requirements.length" class="text-gray-700 text-xs">—</span>
               <div v-else class="flex flex-wrap gap-1">
-                <span v-for="r in t.requirements" :key="r.key" :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r)]" :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">{{ reqLabel(r) }}</span>
+                <span v-for="r in t.requirements" :key="r.key" :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, t.taskId)]" :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">{{ reqLabel(r) }}</span>
               </div>
             </td>
             <td class="px-3 py-1.5 text-right"><span :class="['font-semibold text-xs', `tier-${t.tier}`]">{{ t.points }}</span></td>
@@ -330,7 +330,10 @@
             <button @click="toggleSoon(id)" class="text-gray-600 hover:text-red-400 text-xs leading-none mt-0.5 shrink-0">✕</button>
           </div>
         </div>
-        <div class="px-4 py-2 border-t border-border text-xs text-gray-500 shrink-0">{{ soonPoints }} pts · {{ soonDone }} done</div>
+        <div class="px-4 py-2 border-t border-border text-xs text-gray-500 shrink-0 flex items-center gap-3">
+          <span>{{ soonPoints }} pts · {{ soonDone }} done</span>
+          <button @click="exportSoon" class="ml-auto text-xs text-gray-500 hover:text-gold transition-colors">{{ copied ? 'Copied!' : 'Export' }}</button>
+        </div>
       </div>
     </transition>
 
@@ -374,10 +377,11 @@
         </div>
 
         <!-- Soon footer stats -->
-        <div class="bg-card border-t border-border px-4 py-3 flex gap-4 text-xs text-gray-500 shrink-0">
+        <div class="bg-card border-t border-border px-4 py-3 flex gap-4 text-xs text-gray-500 shrink-0 items-center">
           <span>{{ soon.length - soonDone }} remaining</span>
           <span class="text-gold">{{ soonPoints }} pts</span>
           <span v-if="soonDone">{{ soonDone }} done</span>
+          <button @click="exportSoon" class="ml-auto min-h-[44px] px-3 text-sm text-gray-500 active:text-gold transition-colors">{{ copied ? 'Copied!' : 'Export' }}</button>
         </div>
       </div>
     </transition>
@@ -409,6 +413,7 @@ const SOON_KEY    = 'dpl_soon_v1';
 const IG_KEY      = 'dpl_ig_v1';
 const AREAS_KEY   = 'dpl_areas_v1';
 const SNOOZE_KEY  = 'dpl_snooze_v1';
+const REQ_MET_KEY = 'dpl_req_met_v1';
 const CACHE_TTL   = 60 * 60 * 1000;
 const SNOOZE_MS   = 24 * 60 * 60 * 1000;
 
@@ -416,16 +421,61 @@ const SNOOZE_MS   = 24 * 60 * 60 * 1000;
 const APP_URL = 'https://notsuchabigmac.github.io/OSRSTasks/';
 
 const BOOKMARKLET_SRC = `(function(){
+  var SKILLS = new Set(['attack','strength','defence','hitpoints','ranged','prayer','magic',
+    'cooking','woodcutting','fletching','fishing','firemaking','crafting','smithing','mining',
+    'herblore','agility','thieving','slayer','farming','runecrafting','hunter','construction','sailing']);
+
+  function isTick(img) {
+    var src = (img.src || '').toLowerCase(), alt = (img.alt || '').toLowerCase();
+    return alt === 'yes' || src.includes('tick') || alt.includes('tick');
+  }
+  function isCross(img) {
+    var src = (img.src || '').toLowerCase(), alt = (img.alt || '').toLowerCase();
+    return alt === 'no' || src.includes('cross') || alt.includes('cross');
+  }
+
   var rows = document.querySelectorAll('tr[data-taskid]');
   var completed = [];
+  var reqData = {};
+
   rows.forEach(function(r){
     if(r.classList.contains('wikisync-completed')||r.classList.contains('highlight-on')){
       completed.push(r.dataset.taskid);
     }
+
+    var cells = r.querySelectorAll('td');
+    var reqCell = cells[3];
+    if (!reqCell) return;
+
+    var met = [], unmet = [];
+    reqCell.querySelectorAll('img').forEach(function(img) {
+      var skill = (img.alt || img.title || '').trim().toLowerCase();
+      if (!SKILLS.has(skill)) return;
+      var node = img.nextSibling, level = null;
+      while (node) {
+        var m = (node.textContent || '').match(/^\\s*(\\d+)/);
+        if (m) { level = +m[1]; break; }
+        if (node.nodeType === 1) break;
+        node = node.nextSibling;
+      }
+      if (!level) return;
+      var key = skill + '-' + level;
+      var container = img.closest('li,span,div') || img.parentElement;
+      var imgs = container ? Array.from(container.querySelectorAll('img')) : [];
+      if (imgs.some(isTick) || (container && container.classList.contains('wikisync-met'))) {
+        met.push(key);
+      } else if (imgs.some(isCross) || (container && container.classList.contains('wikisync-unmet'))) {
+        unmet.push(key);
+      }
+    });
+
+    if (met.length || unmet.length) reqData[r.dataset.taskid] = {met: met, unmet: unmet};
   });
-  var encoded = btoa(completed.join(','));
-  var url = '${APP_URL}?sync=' + encoded;
-  window.open(url, '_blank');
+
+  var params = new URLSearchParams();
+  params.set('sync', btoa(completed.join(',')));
+  if (Object.keys(reqData).length) params.set('reqs', btoa(JSON.stringify(reqData)));
+  window.open('${APP_URL}?' + params.toString(), '_blank');
 })();`;
 
 createApp({
@@ -440,6 +490,7 @@ createApp({
     const igDoneIds = ref(new Set(LS.get(IG_KEY, [])));
     const soon      = ref(LS.get(SOON_KEY, []));
     const snoozed   = ref(LS.get(SNOOZE_KEY, {})); // { taskId: expiryTimestamp }
+    const reqMet    = ref(LS.get(REQ_MET_KEY, {})); // { taskId: {met:[key,...], unmet:[key,...]} }
 
     const showSyncHelp  = ref(false);
     const showFilters   = ref(false);
@@ -470,6 +521,7 @@ createApp({
     watch(soon,       v => LS.set(SOON_KEY,   v), { deep: true });
     watch(activeAreas,v => LS.set(AREAS_KEY,  [...v]), { deep: true });
     watch(snoozed,    v => LS.set(SNOOZE_KEY, v),      { deep: true });
+    watch(reqMet,     v => LS.set(REQ_MET_KEY, v),     { deep: true });
 
     // ── Bookmarklet ──────────────────────────────────────────────────────────
 
@@ -502,7 +554,14 @@ createApp({
           syncUrl.value = window.location.href;
         }
       } catch {}
-      // Clean URL now so refresh doesn't re-import, but we keep syncUrl for copying
+      try {
+        const rawReqs = params.get('reqs');
+        if (rawReqs) {
+          const parsed = JSON.parse(atob(rawReqs));
+          // Merge into existing reqMet (keeps data from previous syncs)
+          reqMet.value = { ...reqMet.value, ...parsed };
+        }
+      } catch {}
       window.history.replaceState({}, '', window.location.pathname);
     }
 
@@ -660,6 +719,31 @@ createApp({
       i >= 0 ? soon.value.splice(i, 1) : soon.value.push(id);
     }
 
+    function exportSoon() {
+      const lines = soon.value.map(id => {
+        const t = taskMap.value[id];
+        if (!t) return id;
+        const area = fmtArea(t.area);
+        const reqs = t.requirements.map(r => {
+          const data = reqMet.value[id];
+          let status = '';
+          if (data && r.type === 'skill') {
+            if (data.met?.includes(r.key))   status = ' ✓';
+            else if (data.unmet?.includes(r.key)) status = ' ✗';
+          }
+          return reqLabel(r) + status;
+        });
+        const reqStr = reqs.length ? `  Reqs: ${reqs.join(', ')}` : '';
+        return `${t.name} (${t.tier}, ${t.points}pts${area ? ', ' + area : ''})${reqStr ? '\n' + reqStr : ''}`;
+      });
+      const header = `Soon — ${soon.value.length} task${soon.value.length !== 1 ? 's' : ''} · ${soonPoints.value} pts`;
+      const text = [header, '', ...lines].join('\n');
+      navigator.clipboard.writeText(text).then(() => {
+        copied.value = true;
+        setTimeout(() => copied.value = false, 2000);
+      });
+    }
+
     function handleScroll(e) {
       const st = e.target.scrollTop;
       const scrollingDown = st > lastScrollTop && st > 60;
@@ -700,8 +784,12 @@ createApp({
       return r.text.length > 24 ? r.text.slice(0, 24) + '…' : r.text;
     }
 
-    function reqStyle(r) {
-      // Skill requirements are always shown neutral (we don't have player data)
+    function reqStyle(r, taskId) {
+      if (r.type !== 'skill' || !taskId) return 'bg-card text-gray-400 border-border';
+      const data = reqMet.value[taskId];
+      if (!data) return 'bg-card text-gray-400 border-border';
+      if (data.met?.includes(r.key))   return 'bg-green-950 text-green-400 border-green-800';
+      if (data.unmet?.includes(r.key)) return 'bg-red-950 text-red-400 border-red-800';
       return 'bg-card text-gray-400 border-border';
     }
 
@@ -813,7 +901,7 @@ createApp({
 
     return {
       TIERS, SORT_OPTS, tasks, taskMap, loading, fetchError, lastFetch,
-      appDone, igDoneIds, soon,
+      appDone, igDoneIds, soon, reqMet,
       showSyncHelp, copied, bookmarklet,
       q, activeTiers, onlySoonFilter,
       minPts, maxPts, minPct, maxPct,
@@ -824,7 +912,7 @@ createApp({
       showFilters, showSoonSheet, headerHidden, activeFilterCount,
       handleScroll,
       openWiki, copyBookmarklet, copySyncUrl, dismissSync,
-      isEffectiveDone, inSoon, isSnoozed, snooze, unsnooze, toggleDone, toggleSoon,
+      isEffectiveDone, inSoon, isSnoozed, snooze, unsnooze, toggleDone, toggleSoon, exportSoon,
       reqLabel, reqStyle, fmtArea, pctColor, scoreColor,
       toggleTier, tierActiveClass, toggleArea, toggleAllAreas, activeAreas,
       clearFilters, setSort, sortInd,
