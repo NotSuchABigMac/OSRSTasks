@@ -237,7 +237,7 @@
             <div v-if="t.requirements.length" class="flex flex-wrap gap-1 mt-1.5">
               <span v-for="r in t.requirements" :key="r.key"
                 :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, t.taskId)]">
-                {{ reqLabel(r) }}
+                {{ reqLabel(r, t.taskId) }}
               </span>
             </div>
           </div>
@@ -293,7 +293,7 @@
             <td class="px-3 py-1.5">
               <span v-if="!t.requirements.length" class="text-gray-700 text-xs">—</span>
               <div v-else class="flex flex-wrap gap-1">
-                <span v-for="r in t.requirements" :key="r.key" :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, t.taskId)]" :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">{{ reqLabel(r) }}</span>
+                <span v-for="r in t.requirements" :key="r.key" :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, t.taskId)]" :title="r.type === 'skill' ? `${r.skill} level ${r.level}` : r.text">{{ reqLabel(r, t.taskId) }}</span>
               </div>
             </td>
             <td class="px-3 py-1.5 text-right"><span :class="['font-semibold text-xs', `tier-${t.tier}`]">{{ t.points }}</span></td>
@@ -724,15 +724,7 @@ createApp({
         const t = taskMap.value[id];
         if (!t) return id;
         const area = fmtArea(t.area);
-        const reqs = t.requirements.map(r => {
-          const data = reqMet.value[id];
-          let status = '';
-          if (data && r.type === 'skill') {
-            if (data.met?.includes(r.key))   status = ' ✓';
-            else if (data.unmet?.includes(r.key)) status = ' ✗';
-          }
-          return reqLabel(r) + status;
-        });
+        const reqs = t.requirements.map(r => reqLabel(r, id));
         const reqStr = reqs.length ? `  Reqs: ${reqs.join(', ')}` : '';
         return `${t.name} (${t.tier}, ${t.points}pts${area ? ', ' + area : ''})${reqStr ? '\n' + reqStr : ''}`;
       });
@@ -777,11 +769,19 @@ createApp({
       return n;
     });
 
-    function reqLabel(r) {
+    function reqLabel(r, taskId) {
+      let label;
       if (r.type === 'skill') {
-        return `${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} ${r.level}`;
+        label = `${r.skill.charAt(0).toUpperCase() + r.skill.slice(1)} ${r.level}`;
+      } else {
+        label = r.text.length > 24 ? r.text.slice(0, 24) + '…' : r.text;
       }
-      return r.text.length > 24 ? r.text.slice(0, 24) + '…' : r.text;
+      if (taskId && r.type === 'skill') {
+        const data = reqMet.value[taskId];
+        if (data?.met?.includes(r.key))   return '✓ ' + label;
+        if (data?.unmet?.includes(r.key)) return '✗ ' + label;
+      }
+      return label;
     }
 
     function reqStyle(r, taskId) {
