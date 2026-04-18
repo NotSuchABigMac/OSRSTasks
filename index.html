@@ -429,7 +429,7 @@ const SOON_KEY    = 'dpl_soon_v1';
 const IG_KEY      = 'dpl_ig_v1';
 const AREAS_KEY   = 'dpl_areas_v1';
 const SNOOZE_KEY  = 'dpl_snooze_v1';
-const REQ_MET_KEY = 'dpl_req_met_v1';
+const REQ_MET_KEY = 'dpl_req_met_v2';
 const CACHE_TTL   = 60 * 60 * 1000;
 const SNOOZE_MS   = 24 * 60 * 60 * 1000;
 
@@ -437,60 +437,21 @@ const SNOOZE_MS   = 24 * 60 * 60 * 1000;
 const APP_URL = 'https://notsuchabigmac.github.io/OSRSTasks/';
 
 const BOOKMARKLET_SRC = `(function(){
-  var SKILLS = new Set(['attack','strength','defence','hitpoints','ranged','prayer','magic',
-    'cooking','woodcutting','fletching','fishing','firemaking','crafting','smithing','mining',
-    'herblore','agility','thieving','slayer','farming','runecrafting','hunter','construction','sailing']);
-
-  function isTick(img) {
-    var src = (img.src || '').toLowerCase(), alt = (img.alt || '').toLowerCase();
-    return alt === 'yes' || src.includes('tick') || alt.includes('tick');
-  }
-  function isCross(img) {
-    var src = (img.src || '').toLowerCase(), alt = (img.alt || '').toLowerCase();
-    return alt === 'no' || src.includes('cross') || alt.includes('cross');
-  }
-
   var rows = document.querySelectorAll('tr[data-taskid]');
-  var completed = [];
-  var reqData = {};
+  var completed = [], reqsMet = [];
 
   rows.forEach(function(r){
-    if(r.classList.contains('wikisync-completed')||r.classList.contains('highlight-on')){
+    var hidden = getComputedStyle(r).display === 'none';
+    if (!hidden) {
+      reqsMet.push(r.dataset.taskid);
+    } else if (r.classList.contains('wikisync-completed') || r.classList.contains('highlight-on')) {
       completed.push(r.dataset.taskid);
     }
-
-    var cells = r.querySelectorAll('td');
-    var reqCell = cells[3];
-    if (!reqCell) return;
-
-    var met = [], unmet = [];
-    reqCell.querySelectorAll('img').forEach(function(img) {
-      var skill = (img.alt || img.title || '').trim().toLowerCase();
-      if (!SKILLS.has(skill)) return;
-      var node = img.nextSibling, level = null;
-      while (node) {
-        var m = (node.textContent || '').match(/^\\s*(\\d+)/);
-        if (m) { level = +m[1]; break; }
-        if (node.nodeType === 1) break;
-        node = node.nextSibling;
-      }
-      if (!level) return;
-      var key = skill + '-' + level;
-      var container = img.closest('li,span,div') || img.parentElement;
-      var imgs = container ? Array.from(container.querySelectorAll('img')) : [];
-      if (imgs.some(isTick) || (container && container.classList.contains('wikisync-met'))) {
-        met.push(key);
-      } else if (imgs.some(isCross) || (container && container.classList.contains('wikisync-unmet'))) {
-        unmet.push(key);
-      }
-    });
-
-    if (met.length || unmet.length) reqData[r.dataset.taskid] = {met: met, unmet: unmet};
   });
 
   var params = new URLSearchParams();
   params.set('sync', btoa(completed.join(',')));
-  if (Object.keys(reqData).length) params.set('reqs', btoa(JSON.stringify(reqData)));
+  if (reqsMet.length) params.set('reqs', btoa(reqsMet.join(',')));
   window.open('${APP_URL}?' + params.toString(), '_blank');
 })();`;
 
@@ -506,7 +467,7 @@ createApp({
     const igDoneIds = ref(new Set(LS.get(IG_KEY, [])));
     const soon      = ref(LS.get(SOON_KEY, []));
     const snoozed   = ref(LS.get(SNOOZE_KEY, {})); // { taskId: expiryTimestamp }
-    const reqMet    = ref(LS.get(REQ_MET_KEY, {})); // { taskId: {met:[key,...], unmet:[key,...]} }
+    const reqMet    = ref(new Set(LS.get(REQ_MET_KEY, []))); // Set of taskIds where all reqs are met
 
     const showSyncHelp  = ref(false);
     const showFilters   = ref(false);
@@ -538,7 +499,7 @@ createApp({
     watch(soon,       v => LS.set(SOON_KEY,   v), { deep: true });
     watch(activeAreas,v => LS.set(AREAS_KEY,  [...v]), { deep: true });
     watch(snoozed,    v => LS.set(SNOOZE_KEY, v),      { deep: true });
-    watch(reqMet,     v => LS.set(REQ_MET_KEY, v),     { deep: true });
+    watch(reqMet,     v => LS.set(REQ_MET_KEY, [...v]), { deep: true });
 
     // ── Bookmarklet ──────────────────────────────────────────────────────────
 
@@ -574,9 +535,8 @@ createApp({
       try {
         const rawReqs = params.get('reqs');
         if (rawReqs) {
-          const parsed = JSON.parse(atob(rawReqs));
-          // Merge into existing reqMet (keeps data from previous syncs)
-          reqMet.value = { ...reqMet.value, ...parsed };
+          const ids = atob(rawReqs).split(',').filter(Boolean);
+          reqMet.value = new Set(ids);
         }
       } catch {}
       window.history.replaceState({}, '', window.location.pathname);
@@ -741,7 +701,7 @@ createApp({
         const t = taskMap.value[id];
         if (!t) return id;
         const area = fmtArea(t.area);
-        const reqs = t.requirements.map(r => reqLabel(r, id));
+        const reqs = t.requirements.filter(r => r.type === 'skill').map(r => reqLabel(r, id));
         const reqStr = reqs.length ? `  Reqs: ${reqs.join(', ')}` : '';
         return `${t.name} (${t.tier}, ${t.points}pts${area ? ', ' + area : ''})${reqStr ? '\n' + reqStr : ''}`;
       });
@@ -794,21 +754,17 @@ createApp({
       } else {
         label = r.text.length > 24 ? r.text.slice(0, 24) + '…' : r.text;
       }
-      if (taskId && r.type === 'skill') {
-        const data = reqMet.value[taskId];
-        if (data?.met?.includes(r.key))   return '✓ ' + label;
-        if (data?.unmet?.includes(r.key)) return '✗ ' + label;
+      if (taskId && r.type === 'skill' && reqMet.value.size) {
+        return (reqMet.value.has(taskId) ? '✓ ' : '✗ ') + label;
       }
       return label;
     }
 
     function reqStyle(r, taskId) {
-      if (r.type !== 'skill' || !taskId) return 'bg-card text-gray-400 border-border';
-      const data = reqMet.value[taskId];
-      if (!data) return 'bg-card text-gray-400 border-border';
-      if (data.met?.includes(r.key))   return 'bg-green-950 text-green-400 border-green-800';
-      if (data.unmet?.includes(r.key)) return 'bg-red-950 text-red-400 border-red-800';
-      return 'bg-card text-gray-400 border-border';
+      if (r.type !== 'skill' || !taskId || !reqMet.value.size) return 'bg-card text-gray-400 border-border';
+      return reqMet.value.has(taskId)
+        ? 'bg-green-950 text-green-400 border-green-800'
+        : 'bg-red-950 text-red-400 border-red-800';
     }
 
     function fmtArea(a) {
@@ -890,12 +846,9 @@ createApp({
       if (activeAreas.value.size) list = list.filter(t => activeAreas.value.has(t.area));
       if (activeTiers.value.size) list = list.filter(t => activeTiers.value.has(t.tier));
       if (onlySoonFilter.value)      list = list.filter(t => inSoon(t.taskId));
-      if (onlyReqsMetFilter.value)   list = list.filter(t => {
-        if (!t.requirements.length) return true;
-        const data = reqMet.value[t.taskId];
-        if (!data) return false;
-        return t.requirements.filter(r => r.type === 'skill').every(r => data.met?.includes(r.key));
-      });
+      if (onlyReqsMetFilter.value)   list = list.filter(t =>
+        !t.requirements.some(r => r.type === 'skill') || reqMet.value.has(t.taskId)
+      );
       if (minPts.value !== '')    list = list.filter(t => t.points >= +minPts.value);
       if (maxPts.value !== '')    list = list.filter(t => t.points <= +maxPts.value);
       if (minPct.value !== '')    list = list.filter(t => t.completionPct >= +minPct.value);
