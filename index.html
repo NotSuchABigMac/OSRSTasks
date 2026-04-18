@@ -176,6 +176,10 @@
         <input type="checkbox" v-model="onlySoonFilter" class="accent-yellow-400 w-4 h-4" />
         <span class="text-sm text-gray-400">Soon only</span>
       </label>
+      <label class="flex items-center gap-2 cursor-pointer min-h-[44px]">
+        <input type="checkbox" v-model="onlyReqsMetFilter" class="accent-green-400 w-4 h-4" />
+        <span class="text-sm text-gray-400">Reqs met</span>
+      </label>
       <div class="flex items-center gap-1 text-sm text-gray-500">
         Pts
         <input type="number" v-model.number="minPts" placeholder="0"
@@ -326,6 +330,12 @@
                 <span :class="['text-xs capitalize', `tier-${taskMap[id]?.tier}`]">{{ taskMap[id]?.tier }}</span>
                 <span class="text-xs text-gray-500">{{ taskMap[id]?.points }} pts</span>
               </div>
+              <div v-if="taskMap[id]?.requirements?.length" class="flex flex-wrap gap-1 mt-1.5">
+                <span v-for="r in taskMap[id].requirements" :key="r.key"
+                  :class="['text-xs px-1 py-0.5 rounded border', reqStyle(r, id)]">
+                  {{ reqLabel(r, id) }}
+                </span>
+              </div>
             </div>
             <button @click="toggleSoon(id)" class="text-gray-600 hover:text-red-400 text-xs leading-none mt-0.5 shrink-0">✕</button>
           </div>
@@ -369,6 +379,12 @@
                 <span class="text-gray-500">{{ fmtArea(taskMap[id]?.area) }}</span>
                 <span :class="`tier-${taskMap[id]?.tier}`">{{ taskMap[id]?.points }} pts</span>
                 <span :class="scoreColor(taskMap[id]?.score)">Score {{ taskMap[id]?.score }}</span>
+              </div>
+              <div v-if="taskMap[id]?.requirements?.length" class="flex flex-wrap gap-1 mt-1.5">
+                <span v-for="r in taskMap[id].requirements" :key="r.key"
+                  :class="['text-xs px-1.5 py-0.5 rounded border', reqStyle(r, id)]">
+                  {{ reqLabel(r, id) }}
+                </span>
               </div>
             </div>
             <button @click="toggleSoon(id)"
@@ -505,7 +521,8 @@ createApp({
     const q              = ref('');
     const activeTiers    = ref(new Set());
     const activeAreas    = ref(new Set(LS.get(AREAS_KEY, [])));
-    const onlySoonFilter = ref(false);
+    const onlySoonFilter  = ref(false);
+    const onlyReqsMetFilter = ref(false);
     const minPts         = ref('');
     const maxPts         = ref('');
     const minPct         = ref('');
@@ -764,6 +781,7 @@ createApp({
       if (activeTiers.value.size) n++;
       if (activeAreas.value.size < areaList.value.length) n++;
       if (onlySoonFilter.value) n++;
+      if (onlyReqsMetFilter.value) n++;
       if (minPts.value !== '' || maxPts.value !== '') n++;
       if (minPct.value !== '' || maxPct.value !== '') n++;
       return n;
@@ -842,7 +860,7 @@ createApp({
     }
 
     function clearFilters() {
-      q.value = ''; activeTiers.value = new Set(); onlySoonFilter.value = false;
+      q.value = ''; activeTiers.value = new Set(); onlySoonFilter.value = false; onlyReqsMetFilter.value = false;
       minPts.value = ''; maxPts.value = ''; minPct.value = ''; maxPct.value = '';
       activeAreas.value = new Set(areaList.value);
     }
@@ -871,7 +889,13 @@ createApp({
       if (qs)                     list = list.filter(t => t.name.toLowerCase().includes(qs) || t.description.toLowerCase().includes(qs));
       if (activeAreas.value.size) list = list.filter(t => activeAreas.value.has(t.area));
       if (activeTiers.value.size) list = list.filter(t => activeTiers.value.has(t.tier));
-      if (onlySoonFilter.value)   list = list.filter(t => inSoon(t.taskId));
+      if (onlySoonFilter.value)      list = list.filter(t => inSoon(t.taskId));
+      if (onlyReqsMetFilter.value)   list = list.filter(t => {
+        if (!t.requirements.length) return true;
+        const data = reqMet.value[t.taskId];
+        if (!data) return false;
+        return t.requirements.filter(r => r.type === 'skill').every(r => data.met?.includes(r.key));
+      });
       if (minPts.value !== '')    list = list.filter(t => t.points >= +minPts.value);
       if (maxPts.value !== '')    list = list.filter(t => t.points <= +maxPts.value);
       if (minPct.value !== '')    list = list.filter(t => t.completionPct >= +minPct.value);
@@ -903,7 +927,7 @@ createApp({
       TIERS, SORT_OPTS, tasks, taskMap, loading, fetchError, lastFetch,
       appDone, igDoneIds, soon, reqMet,
       showSyncHelp, copied, bookmarklet,
-      q, activeTiers, onlySoonFilter,
+      q, activeTiers, onlySoonFilter, onlyReqsMetFilter,
       minPts, maxPts, minPct, maxPct,
       sortKey, sortDir,
       filtered, areaList,
