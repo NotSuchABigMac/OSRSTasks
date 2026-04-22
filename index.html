@@ -441,11 +441,10 @@ const BOOKMARKLET_SRC = `(function(){
   var completed = [], reqsMet = [];
 
   rows.forEach(function(r){
-    var hidden = getComputedStyle(r).display === 'none';
-    if (!hidden) {
-      reqsMet.push(r.dataset.taskid);
-    } else if (r.classList.contains('wikisync-completed') || r.classList.contains('highlight-on')) {
+    if (r.classList.contains('wikisync-completed') || r.classList.contains('highlight-on')) {
       completed.push(r.dataset.taskid);
+    } else if (getComputedStyle(r).display !== 'none') {
+      reqsMet.push(r.dataset.taskid);
     }
   });
 
